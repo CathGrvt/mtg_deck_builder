@@ -1,12 +1,12 @@
 # MTG AI Deck Builder
-_Unleash the power of **Machine Learning** to forge next-level **Magic: The Gathering** decks that adapt to the ever-evolving **Standard** meta!_
+_Unleash the power of **Machine Learning** to forge next-level **Magic: The Gathering** decks that adapt to the ever-evolving **Commander** meta!_
 
 [![Magic: The Gathering](https://img.shields.io/badge/Magic%3A%20the%20Gathering-AI%20Deck%20Builder-blue)](#)
 [![Python](https://img.shields.io/badge/Python-3.x-blue.svg)](#)
 [![Unsupervised Learning](https://img.shields.io/badge/Machine%20Learning-Unsupervised-green)](#)
 
 ## Overview
-**MTG AI Deck Builder** aims to train a **dynamic**, unsupervised **AI model** that consistently updates itself to generate competitive **Standard** decks. By tapping into the **Scryfall** API for card data, it analyzes existing decks and the broader meta—ultimately discovering creative synergies and archetype strategies that might be overlooked by the community.
+**MTG AI Deck Builder** aims to train a **dynamic**, unsupervised **AI model** that consistently updates itself to generate competitive **Commander** decks (with optional support for other formats). By tapping into the **Scryfall** API for card data, it analyzes existing decks and the broader meta—ultimately discovering creative synergies and archetype strategies that might be overlooked by the community.
 
 ### Why This Project?
 - **Adaptive Metagame Analysis**: Stay ahead of format shifts by re-training on newly released sets or emergent archetypes.
@@ -18,13 +18,13 @@ _Unleash the power of **Machine Learning** to forge next-level **Magic: The Gath
 > :warning: **Work in progress**: The project features multiple analysis approaches with varying degrees of sophistication.
 
 - **[`fetch_standard_legal_cards.py`]**  
-  Fetches all Standard-legal cards from the Scryfall API and outputs them as a CSV dataset. Handles various card layouts including split cards and Room cards, and extracts comprehensive card data including types, colors, keywords, and mechanics.
+  Despite the legacy filename, this script now fetches cards for any format (default: Commander) from the Scryfall API and outputs them as a CSV dataset. It handles various card layouts—including split cards and Room cards—and extracts comprehensive card data such as types, colors, keywords, and mechanics. Switch formats by passing `--format <format-name>`.
 
 - **[`deck_analysis.py`]**  
-  Analyzes an input deck list to produce baseline archetype insights. Uses statistical analysis to determine if a deck fits Aggro, Midrange, Control, Tempo, or Combo archetypes, and provides detailed breakdowns of mana curve, card compositions, and mechanic distributions.
+  Analyzes an input deck list to produce baseline archetype insights and Commander compliance checks. In addition to archetype tagging (Aggro, Midrange, Control, Tempo, Combo), it now validates commander color identity, singleton rules, ramp density, companion usage, and deck-size requirements while still detailing mana curve, card compositions, and mechanic distributions.
 
 - **[`current_standard_deck_list_scraper.py`]**  
-  Scrapes the latest Standard deck lists from MTGGoldfish's metagame page. Allows filtering by minimum meta percentage and saves deck lists as text files for analysis. Also exports meta representation data as JSON.
+  Scrapes the latest Commander (or other format) deck lists from MTGGoldfish's metagame page. Allows filtering by minimum meta percentage, saves deck lists (with preserved Commander/Deck headers) as text files for analysis, and exports meta representation data as JSON. Use `--format commander` (default) or swap formats as needed.
 
 - **[`analyze_meta_old_try_to_parse.py`]**  
   The first meta analysis script that uses rule-based pattern matching to identify mechanics and synergies. It parses oracle text using predefined regex patterns to detect card interactions, with special handling for Room-type enchantments. While comprehensive, its accuracy depends on the quality of the predefined patterns. It can misclassify complex interactions or miss new mechanics that don't match its patterns.
@@ -52,7 +52,7 @@ All meta analysis scripts are maintained in the repository as they provide compl
 
 ## Key Features
 1. **Scryfall Integration**  
-   Automatically pulls the latest **Standard**-legal cards, ensuring the model is always up-to-date.
+   Automatically pulls the latest **Commander**-legal cards (or any supported format via `--format`), ensuring the model is always up-to-date.
 2. **Deck Archetype Analysis**  
    Categorizes decks into established archetypes (Aggro, Midrange, Control, Tempo, Combo) using multiple approaches:
    - Statistical analysis of card distributions
@@ -84,38 +84,38 @@ Then install any libraries that come up as you test the scripts (e.g., `pip inst
 
 ## Usage Example
 
-### 1. Fetch Standard-Legal Cards
-Pull down all Standard-legal cards (saves `standard_cards.csv` to `./data`):
+### 1. Fetch Commander-Legal Cards
+Pull down all Commander-legal cards (saves `commander_cards.csv` to `./data` by default):
 ```bash
-python fetch_standard_legal_cards.py
+python fetch_standard_legal_cards.py --format commander
 ```
 
 ### 2. Scrape Current Meta Decks
-Scrape the latest Standard deck lists from MTGGoldfish:
+Scrape the latest Commander deck lists from MTGGoldfish (and keep the Commander/Deck section headers intact):
 ```bash
-python current_standard_deck_list_scraper.py
+python current_standard_deck_list_scraper.py --format commander --min-meta 1.0
 ```
 
 ### 3. Analyze a Deck
-To analyze a single deck list, place your deck in a `.txt` file and run:
+To analyze a single deck list, place your deck in a `.txt` file (Commander sections supported) and run:
 ```bash
-python deck_analysis.py /path/to/decklist.txt
+python deck_analysis.py /path/to/decklist.txt --cards data/commander_cards.csv
 ```
 
 ### 4. Analyze the Meta
 You can use any of the meta analysis scripts based on your needs:
 ```bash
 # For rule-based pattern matching (comprehensive but potentially less accurate):
-python analyze_meta_old_try_to_parse.py --cards data/standard_cards.csv --decks current_standard_decks
+python analyze_meta_old_try_to_parse.py --cards data/commander_cards.csv --decks current_commander_decks
 
 # For statistical keyword-based analysis (more reliable but less insightful):
-python analyze_meta_using_keywords.py --cards data/standard_cards.csv --decks current_standard_decks
+python analyze_meta_using_keywords.py --cards data/commander_cards.csv --decks current_commander_decks
 
 # For semantic analysis using machine learning (discovers nuanced relationships):
-python semantics_meta_analysis.py --cards data/standard_cards.csv --decks current_standard_decks
+python semantics_meta_analysis.py --cards data/commander_cards.csv --decks current_commander_decks
 
 # For enhanced semantic analysis with deck name analysis:
-python integrated_deck_name_analyzer.py --cards data/standard_cards.csv --decks current_standard_decks
+python integrated_deck_name_analyzer.py --cards data/commander_cards.csv --decks current_commander_decks
 ```
 
 ### 5. Generate Consolidated Meta Report
@@ -127,45 +127,30 @@ python consolidated_meta_analysis.py
 Each script will generate its own analysis output file and display a summary report in the console.
 
 #### Decklist Format
-The **mainboard** and **sideboard** are separated by a blank line. The script only analyzes the mainboard. For instance:
+Commander decklists downloaded from MTGGoldfish (and parsed by `deck_analysis.py`) typically use explicit section headers instead of blank lines. Example:
 
 <details>
 <summary>Sample Deck List</summary>
 
 ```
-2 Anoint with Affliction
-3 Cut Down
-4 Darkslick Shores
-4 Deep-Cavern Bat
-3 Enduring Curiosity
-4 Floodpits Drowner
-1 Fountainport
-4 Gloomlake Verge
-2 Go for the Throat
-4 Island
-3 Kaito, Bane of Nightmares
-4 Mockingbird
-4 Oildeep Gearhulk
-4 Preacher of the Schism
-4 Restless Reef
-1 Shoot the Sheriff
-4 Swamp
-1 Three Steps Ahead
-4 Underground River
+Commander
+1 Atraxa, Praetors' Voice
 
-4 Duress
-2 Feed the Swarm
-2 Ghost Vacuum
-1 Gix's Command
-1 Malicious Eclipse
-2 The Filigree Sylex
-2 Tishana's Tidebinder
-1 Withering Torment
+Deck
+1 Sol Ring
+1 Arcane Signet
+1 Cultivate
+1 Kodama's Reach
+1 Farseek
+1 Three Visits
+1 Smothering Tithe
+1 Farewell
+... (remaining 92 cards)
 ```
 
 </details>
 
-The **blank line** between `4 Underground River` and `4 Duress` indicates where the **mainboard** ends and the **sideboard** begins.
+If you're analyzing a non-Commander list, you can still split the mainboard and sideboard with a blank line—the parser will continue to recognize both layouts.
 
 ## Comparison of Meta Analysis Approaches
 

@@ -1,12 +1,27 @@
+import argparse
+import json
+import logging
 import os
 import re
-import time
-import json
 import shutil
+import time
+from urllib.parse import urljoin
+
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
-import logging
+
+FORMAT_CONFIG = {
+    'standard': {
+        'metagame_path': '/metagame/standard/full#paper',
+        'output_dir': 'current_standard_decks',
+        'meta_json': 'deck_meta_representation.json'
+    },
+    'commander': {
+        'metagame_path': '/metagame/commander#paper',
+        'output_dir': 'current_commander_decks',
+        'meta_json': 'commander_meta_representation.json'
+    }
+}
 
 # Setup logging
 logging.basicConfig(
@@ -17,11 +32,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class MTGGoldfishScraper:
-    def __init__(self, output_dir="current_standard_decks", min_meta_percentage=0.5):
+    def __init__(self, format_name: str = "commander", output_dir: str = None, min_meta_percentage: float = 0.5):
         self.base_url = "https://www.mtggoldfish.com"
-        self.metagame_url = f"{self.base_url}/metagame/standard/full#paper"
-        self.output_dir = output_dir
+        self.format_name = format_name.lower()
+        format_defaults = FORMAT_CONFIG.get(self.format_name, {})
+        metagame_path = format_defaults.get('metagame_path', f"/metagame/{self.format_name}/full#paper")
+        self.metagame_url = f"{self.base_url}{metagame_path}"
+        self.output_dir = output_dir or format_defaults.get('output_dir', f"current_{self.format_name}_decks")
         self.min_meta_percentage = min_meta_percentage
+        self.meta_filename = format_defaults.get('meta_json', f"{self.format_name}_deck_meta.json")
         self.session = requests.Session()
         # Setting headers to mimic a browser
         self.headers = {
@@ -142,8 +161,7 @@ class MTGGoldfishScraper:
     def download_and_save_deck(self, download_url, deck_info):
         """
         Download the deck and save it with the correct archetype name.
-        Ensure the formatting is exactly like MTGGoldfish's standard: 
-        single-spaced lines with one blank line between mainboard and sideboard.
+        Adjust formatting for Standard (mainboard/sideboard) vs Commander (Commander section).
         """
         archetype_name = deck_info['archetype_name']
         
@@ -157,32 +175,7 @@ class MTGGoldfishScraper:
             # Get the text content
             deck_content = response.text
             
-            # Regular expression to correctly identify the mainboard and sideboard
-            # This is the most reliable approach to handle the deck list format
-            # Looking for consecutive non-empty lines (cards) with appropriate spacing
-            
-            # First, normalize all line breaks to \n
-            deck_content = deck_content.replace('\r\n', '\n').replace('\r', '\n')
-            
-            # Split the content into lines
-            lines = deck_content.split('\n')
-            
-            # Process to get cards only (no empty lines) and preserve mainboard/sideboard separation
-            processed_lines = []
-            is_first_section = True  # To track mainboard vs sideboard
-            
-            for line in lines:
-                stripped_line = line.strip()
-                if stripped_line:  # If line has content
-                    # Add the card with its count
-                    processed_lines.append(stripped_line)
-                elif processed_lines and is_first_section:
-                    # We found the gap between mainboard and sideboard
-                    is_first_section = False
-                    processed_lines.append('')  # Add a single blank line
-            
-            # Join all the lines with single line breaks
-            processed_content = '\n'.join(processed_lines)
+            processed_content = self._format_downloaded_deck(deck_content)
             
             # Create the filename with the archetype name
             filename = f"Deck - {archetype_name}.txt"
@@ -207,13 +200,63 @@ class MTGGoldfishScraper:
             logger.error(f"Error downloading or saving deck for {archetype_name}: {e}")
             return False
     
+    def _format_downloaded_deck(self, deck_content: str) -> str:
+        """Normalize MTGGoldfish deck downloads based on format."""
+        deck_content = deck_content.replace('\r\n', '\n').replace('\r', '\n')
+        lines = deck_content.split('\n')
+        
+        if self.format_name == 'commander':
+            processed_lines = self._format_commander_lines(lines)
+        else:
+            processed_lines = self._format_standard_lines(lines)
+        
+        return '\n'.join(processed_lines)
+    
+    def _format_standard_lines(self, lines):
+        processed_lines = []
+        is_first_section = True
+        
+        for line in lines:
+            stripped_line = line.strip()
+            if stripped_line:
+                processed_lines.append(stripped_line)
+            elif processed_lines and is_first_section:
+                is_first_section = False
+                processed_lines.append('')
+        
+        return processed_lines
+    
+    def _format_commander_lines(self, lines):
+        processed_lines = []
+        known_headers = {'commander', 'deck', 'companion', 'sideboard'}
+        
+        for line in lines:
+            stripped_line = line.strip()
+            if not stripped_line:
+                if processed_lines and processed_lines[-1] != '':
+                    processed_lines.append('')
+                continue
+            
+            if stripped_line.lower() in known_headers:
+                if processed_lines and processed_lines[-1] != '':
+                    processed_lines.append('')
+                processed_lines.append(stripped_line)
+            else:
+                processed_lines.append(stripped_line)
+        
+        # Remove trailing blank line for cleanliness
+        while processed_lines and processed_lines[-1] == '':
+            processed_lines.pop()
+        
+        return processed_lines
+    
     def export_meta_json(self):
         """Export the meta data to a JSON file in the json_outputs directory."""
         # Create json_outputs directory if it doesn't exist
         json_dir = "json_outputs"
         os.makedirs(json_dir, exist_ok=True)
     
-        json_path = os.path.join(json_dir, "deck_meta_representation.json")
+        json_path = os.path.join(json_dir, self.meta_filename)
     
         # Sort decks by meta percentage (descending)
         sorted_data = sorted(self.meta_data, key=lambda x: x["meta_percentage"], reverse=True)
@@ -262,6 +305,32 @@ class MTGGoldfishScraper:
         except Exception as e:
             logger.error(f"An error occurred: {e}")
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Scrape MTGGoldfish meta decks for a specific format.")
+    parser.add_argument(
+        '--format',
+        default='commander',
+        help="Format to scrape (default: commander)."
+    )
+    parser.add_argument(
+        '--output-dir',
+        default=None,
+        help="Destination directory for downloaded decklists."
+    )
+    parser.add_argument(
+        '--min-meta',
+        type=float,
+        default=0.5,
+        help="Minimum metagame percentage required to download a deck."
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    scraper = MTGGoldfishScraper()
+    args = parse_args()
+    scraper = MTGGoldfishScraper(
+        format_name=args.format,
+        output_dir=args.output_dir,
+        min_meta_percentage=args.min_meta
+    )
     scraper.run()

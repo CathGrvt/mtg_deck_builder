@@ -1,0 +1,105 @@
+1 Arcane Signet
+1 Bedevil
+1 Black Waltz No. 3
+1 Bladebrand
+1 Blasphemous Act
+1 Blazemire Verge
+1 Blood Crypt
+1 Bloodstained Mire
+1 Bolas's Citadel
+1 Captivating Cave
+1 Cavern of Souls
+1 Circle of Power
+1 Clever Conjurer
+1 Command Tower
+1 Commit/Memory
+1 Coruscation Mage
+1 Counterspell
+1 Curiosity
+1 Dark Ritual
+1 Darkness
+1 Darksteel Plate
+1 Diabolic Intent
+1 Drowned Catacomb
+1 Dualcaster Mage
+1 Fabled Passage
+1 Fight On!
+1 Flooded Strand
+1 Fresh Start
+1 Gloomlake Verge
+1 Gogo, Master of Mimicry
+1 Grievous Wound
+1 Harmonic Prodigy
+1 In Garruk's Wake
+2 Island
+1 Kefka, Court Mage
+1 Kefka, Dancing Mad
+1 Kuja, Genome Sorcerer
+1 Laughing Mad
+1 Lier, Disciple of the Drowned
+1 Lightning Bolt
+1 Louisoix's Sacrifice
+1 Macabre Waltz
+1 Magus of the Wheel
+1 Marsh Flats
+1 Misty Rainforest
+2 Mountain
+1 Mysidian Elder
+1 Najal, the Storm Runner
+1 Negate
+1 Niv-Mizzet, Parun
+1 Notion Thief
+1 Nowhere to Run
+1 Opposition Agent
+1 Oscorp Industries
+1 Polluted Delta
+1 Purphoros, God of the Forge
+1 Rakdos Charm
+1 Raucous Theater
+1 Reflecting Pool
+1 Relic of Legends
+1 Reliquary Tower
+1 Relm's Sketching
+1 Restless Vents
+1 Revenge of Ravens
+1 Rhystic Study
+1 Riptide Laboratory
+1 Riverpyre Verge
+1 Rona, Sheoldred's Faithful
+1 Saw in Half
+1 Scalding Tarn
+1 Seething Landscape
+1 Sheoldred, the Apocalypse
+1 Sol Ring
+1 Soul Sear
+1 Spirit Water Revival
+1 Steam Vents
+1 Storm Skreelix
+1 Summary Dismissal
+1 Sunken Hollow
+2 Swamp
+1 Swiftwater Cliffs
+1 Telepathy
+1 Temple of the False God
+1 The Emperor of Palamecia
+1 Thundering Falls
+1 Ultimecia, Temporal Threat
+1 Undercity Sewers
+1 Underworld Dreams
+1 Ureni's Rebuff
+1 Varragoth, Bloodsky Sire
+1 Verdant Catacombs
+1 Waterlogged Teachings
+1 Watery Grasp
+1 Whip of Erebos
+1 Wingspan Stride
+1 Xande, Dark Mage
+1 Xander's Lounge
+
+1 Arid Mesa
+1 Bloodletter of Aclazotz
+1 Field of the Dead
+1 Nicol Bolas, Dragon-God
+1 Vivi Ornitier
+1 Void Mirror
+1 Wooded Foothills

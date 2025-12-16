@@ -1,10 +1,23 @@
-import requests
-import pandas as pd
-from typing import List, Dict, Any, Optional
-import time
-from datetime import datetime
+import argparse
 import logging
 import os
+import time
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
+import requests
+
+SUPPORTED_FORMATS = {
+    # Keeping standard here for backwards compatibility if needed later
+    'standard': {
+        'scryfall_query': 'format:standard legal:standard',
+        'default_filename': 'standard_cards.csv'
+    },
+    'commander': {
+        'scryfall_query': 'format:commander legal:commander',
+        'default_filename': 'commander_cards.csv'
+    }
+}
 
 class ScryfallFetcher:
     """
@@ -14,12 +27,13 @@ class ScryfallFetcher:
     
     BASE_URL = "https://api.scryfall.com"
     
-    def __init__(self, app_name: str = "MTGDeckBuilder/1.0"):
+    def __init__(self, app_name: str = "MTGDeckBuilder/1.0", format_name: str = "commander"):
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': app_name,
             'Accept': 'application/json'
         })
+        self.format_name = format_name.lower()
         
         # Set up logging
         logging.basicConfig(level=logging.INFO)
@@ -65,17 +79,31 @@ class ScryfallFetcher:
                 self.logger.error(f"API request failed: {str(e)}")
                 raise
     
-    def get_standard_cards(self) -> List[Dict[str, Any]]:
+    def get_cards_for_format(self, format_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Fetch all Standard-legal cards with proper pagination handling
+        Fetch cards for the configured format with proper pagination handling
         """
+        target_format = (format_name or self.format_name).lower()
+        query_details = SUPPORTED_FORMATS.get(target_format, {})
+        
+        if not query_details:
+            self.logger.warning(
+                "Format '%s' not in SUPPORTED_FORMATS. Falling back to generic query.", 
+                target_format
+            )
+        
+        query_string = query_details.get(
+            'scryfall_query', 
+            f'format:{target_format} legal:{target_format}'
+        )
+        
         cards = []
         params = {
-            'q': 'format:standard legal:standard',
+            'q': query_string,
             'unique': 'cards'
         }
         
-        self.logger.info("Starting to fetch Standard-legal cards...")
+        self.logger.info("Starting to fetch %s-legal cards...", target_format.title())
         
         try:
             # Initial request
@@ -214,7 +242,7 @@ class ScryfallFetcher:
             
         return pd.DataFrame(processed_cards)
 
-    def save_to_csv(self, df: pd.DataFrame, filename: str = None) -> str:
+    def save_to_csv(self, df: pd.DataFrame, filename: Optional[str] = None, format_name: Optional[str] = None) -> str:
         """
         Save the processed cards to a CSV file in the data directory
         """
@@ -222,8 +250,10 @@ class ScryfallFetcher:
         data_dir = 'data'
         os.makedirs(data_dir, exist_ok=True)
         
+        target_format = (format_name or self.format_name).lower()
         if filename is None:
-            filename = f"standard_cards.csv"
+            default_name = SUPPORTED_FORMATS.get(target_format, {}).get('default_filename')
+            filename = default_name or f"{target_format}_cards.csv"
         
         # Construct full path
         filepath = os.path.join(data_dir, filename)
@@ -231,20 +261,41 @@ class ScryfallFetcher:
         df.to_csv(filepath, index=False)
         return filepath
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Fetch format-legal cards from Scryfall.")
+    parser.add_argument(
+        '--format',
+        default='commander',
+        help="MTG format to fetch (default: commander)."
+    )
+    parser.add_argument(
+        '--output',
+        default=None,
+        help="Optional output filename inside data/. Defaults to <format>_cards.csv."
+    )
+    parser.add_argument(
+        '--app-name',
+        default='MTGDeckBuilder/1.0',
+        help="Custom app name for Scryfall rate limiting."
+    )
+    return parser.parse_args()
+
+
 def main():
     """
     Main function to demonstrate usage
     """
-    fetcher = ScryfallFetcher()
+    args = parse_args()
+    fetcher = ScryfallFetcher(app_name=args.app_name, format_name=args.format)
     
     try:
-        print("Fetching Standard-legal cards...")
-        cards = fetcher.get_standard_cards()
+        print(f"Fetching {args.format.title()}-legal cards...")
+        cards = fetcher.get_cards_for_format()
         
         print("Processing card data...")
         df = fetcher.process_card_data(cards)
         
-        filename = fetcher.save_to_csv(df)
+        filename = fetcher.save_to_csv(df, filename=args.output, format_name=args.format)
         print(f"Data saved to {filename}")
         
         print("\nDataset Overview:")

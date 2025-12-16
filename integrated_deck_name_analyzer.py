@@ -898,8 +898,8 @@ def integrate_with_semantics_meta_analysis():
     
     # Parser for command-line arguments
     parser = argparse.ArgumentParser(description='Enhanced MTG Meta Analyzer')
-    parser.add_argument('--cards', default='data/standard_cards.csv', help='Path to card database CSV')
-    parser.add_argument('--decks', default='current_standard_decks', help='Directory containing decklists')
+    parser.add_argument('--cards', default='data/commander_cards.csv', help='Path to card database CSV')
+    parser.add_argument('--decks', default='current_commander_decks', help='Directory containing decklists')
     parser.add_argument('--output', default='json_outputs/enhanced_semantic_meta_analysis.json', 
                        help='Output file for analysis results')
     

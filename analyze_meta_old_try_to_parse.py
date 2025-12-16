@@ -1430,12 +1430,12 @@ def main():
         parser = argparse.ArgumentParser(description='Magic Format Meta Analyzer')
         parser.add_argument(
             '--cards', 
-            default='data/standard_cards.csv',
+            default='data/commander_cards.csv',
             help='Path to cards CSV file'
         )
         parser.add_argument(
             '--decks',
-            default='current_standard_decks',
+            default='current_commander_decks',
             help='Directory containing decklists'
         )
         parser.add_argument(
