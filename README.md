@@ -48,6 +48,16 @@ _Unleash the power of **Machine Learning** to forge next-level **Magic: The Gath
 - **[`consolidated_meta_analysis.py`]**  
   Combines the outputs from all three meta analysis approaches (pattern-based, keyword-based, and semantic) to generate a comprehensive meta report. It reconciles potentially conflicting information from different analysis methods, extracts the most reliable insights from each, and produces a unified view of the metagame including archetype distributions, card type trends, color combinations, and synergy clusters.
 
+- **[`ai_deck_generator.py`]**  
+  A first-pass, meta-driven **deck generator**. It uses the same card database and scraped decklists as the analysis scripts, building simple frequency statistics over the existing meta. Given a requested format, color identity, and optional archetype hint, it produces a complete decklist by:
+  - Filtering the card pool by color identity and basic Commander/constructed rules  
+  - Favoring cards that appear more often in the current meta  
+  - Enforcing approximate land ratios and copy limits (Commander singleton vs. 4-of)  
+  This module is intentionally simple and model-agnostic so it can later be upgraded to use neural generators and semantic embeddings while keeping the same `DeckSpec` interface.
+
+- **[`consolidated_meta_analysis.py`]**  
+  Combines the outputs from all three meta analysis approaches (pattern-based, keyword-based, and semantic) to generate a comprehensive meta report. It reconciles potentially conflicting information from different analysis methods, extracts the most reliable insights from each, and produces a unified view of the metagame including archetype distributions, card type trends, color combinations, and synergy clusters.
+
 All meta analysis scripts are maintained in the repository as they provide complementary insights for different purposes. Use the pattern-matching approach for detailed mechanic breakdowns, the keyword-based approach for reliable statistical analysis, the semantic approach for discovering unexpected card relationships, and the deck name analyzer for understanding deck conceptualization and community categorization.
 
 ## Key Features
@@ -125,6 +135,35 @@ python consolidated_meta_analysis.py
 ```
 
 Each script will generate its own analysis output file and display a summary report in the console.
+
+### 6. Generate a Deck with the Baseline AI Generator
+
+Once you have a card database and a directory of example decklists (Commander or another format), you can ask the generator to produce a new list:
+
+```bash
+# Example: generate a Boros (W/R) Commander-style deck
+python ai_deck_generator.py \
+  --cards data/commander_cards.csv \
+  --training-decks current_commander_decks \
+  --format commander \
+  --colors WR \
+  --size 100 \
+  --output generated_decks/boros_commander_ai.txt
+```
+
+For non-Commander formats (e.g., Standard), point `--training-decks` at `current_standard_decks` and adjust `--format`/`--size` as needed:
+
+```bash
+python ai_deck_generator.py \
+  --cards data/commander_cards.csv \
+  --training-decks current_standard_decks \
+  --format standard \
+  --colors WR \
+  --size 60 \
+  --output generated_decks/boros_standard_ai.txt
+```
+
+Use `--include` and `--exclude` to force or ban specific cards, and `--seed` for reproducible outputs. The current generator is frequency-based; future iterations can plug in semantic and neural models without changing this CLI.
 
 #### Decklist Format
 Commander decklists downloaded from MTGGoldfish (and parsed by `deck_analysis.py`) typically use explicit section headers instead of blank lines. Example:
