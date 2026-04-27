@@ -902,6 +902,11 @@ def integrate_with_semantics_meta_analysis():
     parser.add_argument('--decks', default='current_commander_decks', help='Directory containing decklists')
     parser.add_argument('--output', default='json_outputs/enhanced_semantic_meta_analysis.json', 
                        help='Output file for analysis results')
+    parser.add_argument(
+        '--embed-all-cards',
+        action='store_true',
+        help='Embed the full card database instead of only cards seen in decklists.'
+    )
     
     args = parser.parse_args()
     
@@ -916,13 +921,20 @@ def integrate_with_semantics_meta_analysis():
         if not decklists:
             print("Error: No valid decklists found")
             return
+
+        all_decklist_cards = set()
+        for decklist in decklists.values():
+            all_decklist_cards.update(decklist)
+        relevant_cards = None if args.embed_all_cards else all_decklist_cards
+        if relevant_cards is not None:
+            print(f"Restricting embeddings to {len(relevant_cards)} unique decklist cards")
             
         # Enhance the semantic analyzer
         print("Enhancing semantic analyzer with fully dynamic deck name analysis...")
         EnhancedAnalyzer = enhance_mtg_semantic_analyzer(MTGSemanticAnalyzer)
         
         # Create the enhanced analyzer
-        analyzer = EnhancedAnalyzer(card_db)
+        analyzer = EnhancedAnalyzer(card_db, relevant_cards=relevant_cards)
         
         # Run the analysis
         print("Running enhanced meta analysis...")

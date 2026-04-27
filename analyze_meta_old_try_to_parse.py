@@ -10,6 +10,12 @@ from collections import Counter, defaultdict
 from enum import Enum
 from dataclasses import dataclass
 
+from mtg_io import (
+    load_decklists_from_directory,
+    normalize_card_name as shared_normalize_card_name,
+    safe_parse_list,
+)
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -38,13 +44,7 @@ def normalize_card_name(card_name: str) -> str:
     """
     Normalize card name by standardizing single slash to double slash format
     """
-    # Check if the card name contains a single slash but not double slash
-    if '/' in card_name and '//' not in card_name:
-        # Split by the single slash and rejoin with proper format
-        parts = card_name.split('/')
-        if len(parts) == 2:
-            return f"{parts[0].strip()} // {parts[1].strip()}"
-    return card_name
+    return shared_normalize_card_name(card_name)
 
 class DynamicArchetypeClassifier:
     """Advanced deck archetype classifier that considers meta speed and hybrid strategies"""
@@ -1248,99 +1248,16 @@ def load_and_preprocess_cards(csv_path: str) -> pd.DataFrame:
 
 def safe_eval_list(val: Any) -> List:
     """Safely evaluate string representations of lists with improved error handling"""
-    if pd.isna(val):
-        return []
-        
-    try:
-        if isinstance(val, str):
-            # Handle string representation of lists
-            if val.startswith('[') and val.endswith(']'):
-                # Remove brackets and quotes
-                inner = val[1:-1]
-                if not inner.strip():
-                    return []
-                    
-                # Split by comma and clean items
-                items = []
-                for item in inner.split(','):
-                    # Clean up quotes and whitespace
-                    cleaned = item.strip().strip('\'"')
-                    if cleaned:
-                        items.append(cleaned)
-                return items
-            # Handle single values
-            elif val.strip():
-                return [val.strip()]
-            return []
-        elif isinstance(val, list):
-            return val
-        return []
-    except Exception as e:
-        logger.warning(f"Error parsing list value: {val}. Error: {e}")
-        return []
+    return safe_parse_list(val)
 
 def load_decklists(directory: str) -> Dict[str, List[str]]:
     """Load decklists with improved format handling and dual-faced card support"""
-    decklists = {}
-    
     try:
-        deck_files = [
-            f for f in os.listdir(directory) 
-            if f.endswith('.txt') and not f.startswith('.')
-        ]
-        
-        for filename in deck_files:
-            filepath = os.path.join(directory, filename)
-            
-            try:
-                with open(filepath, 'r', encoding='utf-8') as file:
-                    lines = file.readlines()
-                    deck_name = os.path.splitext(filename)[0]
-                    mainboard = []
-                    sideboard_found = False
-                    
-                    for line in lines:
-                        line = line.strip()
-                        
-                        # Skip empty lines and comments
-                        if not line or line.startswith('#'):
-                            continue
-                            
-                        # Check for sideboard marker
-                        if line.lower() == 'sideboard':
-                            sideboard_found = True
-                            continue
-                            
-                        if sideboard_found:
-                            continue
-                            
-                        # Parse card entry
-                        try:
-                            # Handle various formats
-                            match = re.match(
-                                r'^(?:(\d+)[x]?\s+)?(.+?)(?:\s+[x]?(\d+))?$',
-                                line, 
-                                re.IGNORECASE
-                            )
-                            if match:
-                                count = int(match.group(1) or match.group(3) or '1')
-                                card_name = match.group(2).strip()
-                                
-                                # Do not normalize card names here - leave them in original form
-                                # The normalization will happen in the processing stage
-                                
-                                mainboard.extend([card_name] * count)
-                        except Exception as e:
-                            logger.warning(f"Could not parse line in {filename}: {line}. Error: {e}")
-                    
-                    if mainboard:
-                        decklists[deck_name] = mainboard
-                        
-            except Exception as e:
-                logger.error(f"Error processing deck file {filename}: {e}")
-                continue
-        
-        logger.info(f"Loaded {len(decklists)} decklists from {len(deck_files)} files")
+        decklists = load_decklists_from_directory(
+            directory,
+            include_command_zone=True,
+        )
+        logger.info(f"Loaded {len(decklists)} decklists from {directory}")
         return decklists
         
     except Exception as e:

@@ -10,6 +10,12 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import numpy as np
 import pandas as pd
 
+from mtg_io import (
+    normalize_card_name as shared_normalize_card_name,
+    parse_decklist_file,
+    safe_parse_list,
+)
+
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -88,13 +94,7 @@ class AdvancedDeckAnalyzer:
         """
         Normalize card name by standardizing single slash to double slash format
         """
-        # Check if the card name contains a single slash but not double slash
-        if '/' in card_name and '//' not in card_name:
-            # Split by the single slash and rejoin with proper format
-            parts = card_name.split('/')
-            if len(parts) == 2:
-                return f"{parts[0].strip()} // {parts[1].strip()}"
-        return card_name
+        return shared_normalize_card_name(card_name)
         
     def _extract_card_mechanics(self, card: pd.Series) -> Dict[str, int]:
         """
@@ -567,11 +567,7 @@ class AdvancedDeckAnalyzer:
             for _, commander in commander_cards.iterrows():
                 color_identity = commander.get('color_identity') or commander.get('colors') or []
                 if isinstance(color_identity, str):
-                    # In case the CSV stored strings
-                    try:
-                        color_identity = eval(color_identity)
-                    except Exception:
-                        color_identity = list(color_identity)
+                    color_identity = safe_parse_list(color_identity)
                 allowed_colors.update(color_identity)
         profile['color_identity'] = sorted(allowed_colors)
         
@@ -580,10 +576,7 @@ class AdvancedDeckAnalyzer:
             for _, card in deck_unique.iterrows():
                 card_identity = card.get('color_identity') or []
                 if isinstance(card_identity, str):
-                    try:
-                        card_identity = eval(card_identity)
-                    except Exception:
-                        card_identity = list(card_identity)
+                    card_identity = safe_parse_list(card_identity)
                 if card_identity and not set(card_identity).issubset(allowed_colors):
                     profile['color_identity_violations'].append(card['name'])
         
@@ -611,10 +604,7 @@ class AdvancedDeckAnalyzer:
             type_line = card_row.get('type_line') or ''
             produced_mana = card_row.get('produced_mana') or []
             if isinstance(produced_mana, str):
-                try:
-                    produced_mana = eval(produced_mana)
-                except Exception:
-                    produced_mana = []
+                produced_mana = safe_parse_list(produced_mana)
             # Mana rocks / dorks
             if produced_mana and any(keyword in type_line for keyword in ['Artifact', 'Creature', 'Enchantment']):
                 return True
@@ -668,53 +658,7 @@ def load_decklist(filepath: str, commander_hints: Optional[List[str]] = None) ->
     """
     Load decklist from a file, capturing Commander sections when present.
     """
-    with open(filepath, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
-    
-    sections = {
-        'mainboard': [],
-        'sideboard': [],
-        'commanders': [],
-        'companions': []
-    }
-    current_section = 'mainboard'
-    section_aliases = {
-        'sideboard': 'sideboard',
-        'commander': 'commanders',
-        'deck': 'mainboard',
-        'companion': 'companions'
-    }
-    
-    for raw_line in lines:
-        line = raw_line.strip()
-        
-        # Skip comments and treat blank line as potential section switch
-        if not line:
-            if current_section == 'mainboard' and sections['mainboard']:
-                current_section = 'sideboard'
-            continue
-        
-        if line.startswith('#'):
-            continue
-        
-        section_key = section_aliases.get(line.lower())
-        if section_key:
-            current_section = section_key
-            continue
-        
-        # Parse card entry
-        try:
-            match = re.match(r'^(?:(\d+)[x]?\s+)?(.+?)(?:\s+[x]?(\d+))?$', line, re.IGNORECASE)
-            if match:
-                count = int(match.group(1) or match.group(3) or '1')
-                card_name = match.group(2).strip()
-                
-                # Normalize card name (handling single slash format)
-                card_name = normalize_card_name(card_name)
-                
-                sections[current_section].extend([card_name] * count)
-        except Exception as e:
-            logger.warning(f"Could not parse line: {line}. Error: {e}")
+    sections = parse_decklist_file(filepath)
     
     # Auto-infer commanders from filename if no explicit section
     if not sections['commanders'] and commander_hints:
@@ -739,13 +683,7 @@ def normalize_card_name(card_name: str) -> str:
     """
     Normalize card name by standardizing single slash to double slash format
     """
-    # Check if the card name contains a single slash not followed by another slash
-    if '/' in card_name and '//' not in card_name:
-        # Replace single slash with double slash, being careful with spacing
-        parts = card_name.split('/')
-        if len(parts) == 2:
-            return f"{parts[0].strip()} // {parts[1].strip()}"
-    return card_name
+    return shared_normalize_card_name(card_name)
 
 def analyze_deck(cards_df: pd.DataFrame, decklist_path: str):
     """
@@ -951,9 +889,7 @@ def main():
         list_columns = ['colors', 'color_identity', 'keywords', 'produced_mana']
         for col in list_columns:
             if col in cards_df.columns:
-                cards_df[col] = cards_df[col].apply(
-                    lambda x: eval(x) if isinstance(x, str) and x.startswith('[') else x
-                )
+                cards_df[col] = cards_df[col].apply(safe_parse_list)
         
     except FileNotFoundError:
         print(f"Error: Card database file not found. Please ensure '{args.cards}' exists.")

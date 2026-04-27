@@ -7,7 +7,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 
-from semantics_meta_analysis import load_card_database, load_decklists
+from mtg_io import load_card_database, load_decklists_from_directory
 
 
 COLOR_ORDER = ["W", "U", "B", "R", "G"]
@@ -134,7 +134,10 @@ def main() -> None:
     card_db = load_card_database(args.cards)
 
     print(f"Loading decklists from {args.decks}...")
-    decklists = load_decklists(args.decks)
+    decklists = load_decklists_from_directory(
+        args.decks,
+        include_command_zone=True,
+    )
     if not decklists:
         print("Error: no decklists found; aborting corpus build.")
         return
@@ -178,4 +181,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

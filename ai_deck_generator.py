@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from deck_analysis import COMMANDER_DUPLICATE_EXCEPTIONS
-from semantics_meta_analysis import load_card_database, load_decklists
+from mtg_io import load_card_database, load_decklists_from_directory, safe_parse_list
 
 
 COLOR_ORDER = ["W", "U", "B", "R", "G"]
@@ -90,11 +90,8 @@ def card_matches_colors(card: pd.Series, colors: Sequence[str]) -> bool:
         identity_set = set(identity)
     elif isinstance(identity, str) and identity:
         # Fallback – load_deck_database normally converts to list already
-        try:
-            parsed = eval(identity)
-            identity_set = set(parsed) if isinstance(parsed, list) else set()
-        except Exception:
-            identity_set = set()
+        parsed = safe_parse_list(identity)
+        identity_set = set(parsed) if isinstance(parsed, list) else set()
     else:
         identity_set = set()
 
@@ -559,7 +556,10 @@ def main() -> None:
     if args.training_decks and os.path.isdir(args.training_decks):
         print(f"Loading training decks from {args.training_decks}...")
         try:
-            decklists = load_decklists(args.training_decks)
+            decklists = load_decklists_from_directory(
+                args.training_decks,
+                include_command_zone=True,
+            )
             if not decklists:
                 print(
                     "Warning: no training decklists loaded; "
@@ -622,7 +622,9 @@ def main() -> None:
     print(deck_text)
 
     if args.output:
-        os.makedirs(os.path.dirname(args.output), exist_ok=True)
+        out_dir = os.path.dirname(args.output)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
         with open(args.output, "w", encoding="utf-8") as f:
             f.write(deck_text + "\n")
         print(f"\nDecklist written to {args.output}")

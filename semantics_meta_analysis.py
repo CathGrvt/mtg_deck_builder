@@ -14,55 +14,24 @@ import itertools
 # Import sentence-transformers for embeddings
 from sentence_transformers import SentenceTransformer
 
+from mtg_io import (
+    load_card_database as shared_load_card_database,
+    load_decklists_from_directory,
+    normalize_card_name as shared_normalize_card_name,
+    safe_parse_list,
+)
+
 def normalize_card_name(card_name: str) -> str:
     """
     Normalize card name by standardizing single slash to double slash format.
     """
-    if not card_name:
-        return ""
-        
-    # Check if the card name contains a single slash but not double slash
-    if '/' in card_name and '//' not in card_name:
-        # Split by the single slash and rejoin with proper format
-        parts = card_name.split('/')
-        if len(parts) == 2:
-            return f"{parts[0].strip()} // {parts[1].strip()}"
-    return card_name
+    return shared_normalize_card_name(card_name)
 
 def safe_eval_list(val: Any) -> List:
     """
     Safely evaluate string representations of lists.
     """
-    if pd.isna(val):
-        return []
-        
-    try:
-        if isinstance(val, str):
-            # Handle string representation of lists
-            if val.startswith('[') and val.endswith(']'):
-                # Remove brackets and quotes
-                inner = val[1:-1]
-                if not inner.strip():
-                    return []
-                    
-                # Split by comma and clean items
-                items = []
-                for item in inner.split(','):
-                    # Clean up quotes and whitespace
-                    cleaned = item.strip().strip('\'"')
-                    if cleaned:
-                        items.append(cleaned)
-                return items
-            # Handle single values
-            elif val.strip():
-                return [val.strip()]
-            return []
-        elif isinstance(val, list):
-            return val
-        return []
-    except Exception as e:
-        print(f"Warning: Error parsing list value: {val}. Error: {e}")
-        return []
+    return safe_parse_list(val)
 
 class MTGSemanticAnalyzer:
     """
@@ -70,14 +39,17 @@ class MTGSemanticAnalyzer:
     to understand patterns without hardcoded rules.
     """
     
-    def __init__(self, card_db: pd.DataFrame):
+    def __init__(self, card_db: pd.DataFrame, relevant_cards: Optional[Set[str]] = None):
         """
         Initialize the analyzer with the card database.
         
         Args:
             card_db: DataFrame containing card information
+            relevant_cards: Optional set of card names to embed. If omitted,
+                all cards in the database are embedded.
         """
         self.card_db = card_db
+        self.relevant_cards = {card.lower() for card in relevant_cards} if relevant_cards else None
         
         # Load the sentence transformer model
         # Using a small but effective model (can be replaced with larger models if accuracy is key)
@@ -94,7 +66,7 @@ class MTGSemanticAnalyzer:
     
     def _process_card_database(self):
         """Preprocess the card database and generate embeddings"""
-        # Generate embeddings for all cards
+        # Generate embeddings for cards that are relevant to this run.
         print("Generating card embeddings...")
         
         # Prepare oracle texts
@@ -102,11 +74,19 @@ class MTGSemanticAnalyzer:
         valid_indices = []
         
         for i, card in self.card_db.iterrows():
+            if self.relevant_cards:
+                card_name = str(card['name']).lower() if pd.notna(card['name']) else ""
+                full_name = str(card['full_name']).lower() if pd.notna(card.get('full_name')) else ""
+                if card_name not in self.relevant_cards and full_name not in self.relevant_cards:
+                    continue
+
             if pd.notna(card['oracle_text']):
                 # Combine card name and oracle text for more context
                 combined_text = f"{card['name']}. {card['oracle_text']}"
                 oracle_texts.append(combined_text)
                 valid_indices.append(i)
+
+        print(f"Embedding {len(oracle_texts)} cards for this analysis run")
         
         # Generate embeddings in batches
         batch_size = 32
@@ -1421,34 +1401,9 @@ def load_card_database(csv_path: str) -> pd.DataFrame:
         Preprocessed DataFrame
     """
     try:
-        # Load CSV
-        df = pd.read_csv(csv_path)
-        
-        # Process boolean columns
-        bool_columns = [
-            'is_creature', 'is_land', 'is_instant_sorcery',
-            'is_multicolored', 'has_etb_effect', 'is_legendary'
-        ]
-        
-        for col in bool_columns:
-            if col in df.columns:
-                df[col] = df[col].map({'True': True, 'False': False, True: True, False: False})
-        
-        # Process list columns (stored as strings)
-        list_columns = ['colors', 'color_identity', 'keywords', 'produced_mana']
-        for col in list_columns:
-            if col in df.columns:
-                df[col] = df[col].apply(safe_eval_list)
-        
-        # Convert numeric columns
-        numeric_columns = ['cmc', 'color_count']
-        for col in numeric_columns:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-        
+        df = shared_load_card_database(csv_path)
         print(f"Loaded {len(df)} cards from {csv_path}")
         return df
-        
     except Exception as e:
         print(f"Error loading card database: {e}")
         raise
@@ -1463,65 +1418,10 @@ def load_decklists(directory: str) -> Dict[str, List[str]]:
     Returns:
         Dictionary mapping deck names to card lists
     """
-    decklists = {}
-    
     try:
-        # Find all text files
-        deck_files = [f for f in os.listdir(directory) if f.endswith('.txt')]
-        
-        for filename in deck_files:
-            filepath = os.path.join(directory, filename)
-            deck_name = os.path.splitext(filename)[0]
-            
-            try:
-                with open(filepath, 'r', encoding='utf-8') as file:
-                    lines = file.readlines()
-                    
-                    # Parse decklist
-                    mainboard = []
-                    sideboard_found = False
-                    
-                    for line in lines:
-                        line = line.strip()
-                        
-                        # Skip empty lines and comments
-                        if not line or line.startswith('#'):
-                            continue
-                        
-                        # Check for sideboard marker
-                        if line.lower() == 'sideboard':
-                            sideboard_found = True
-                            continue
-                        
-                        # Skip sideboard cards
-                        if sideboard_found:
-                            continue
-                        
-                        # Parse card entry
-                        try:
-                            # Handle various formats
-                            match = re.match(r'^(?:(\d+)[x]?\s+)?(.+?)(?:\s+[x]?(\d+))?$', line, re.IGNORECASE)
-                            if match:
-                                count = int(match.group(1) or match.group(3) or '1')
-                                card_name = match.group(2).strip()
-                                
-                                # Add card to mainboard (respecting count)
-                                mainboard.extend([card_name] * count)
-                            else:
-                                print(f"Warning: Could not parse line in {filename}: {line}")
-                        except Exception as e:
-                            print(f"Warning: Error parsing line in {filename}: {line}. Error: {e}")
-                    
-                    # Store decklist
-                    if mainboard:
-                        decklists[deck_name] = mainboard
-                    
-            except Exception as e:
-                print(f"Error processing deck file {filename}: {e}")
-        
+        decklists = load_decklists_from_directory(directory, include_command_zone=True)
         print(f"Loaded {len(decklists)} decklists from {directory}")
         return decklists
-        
     except Exception as e:
         print(f"Error loading decklists: {e}")
         raise
@@ -1536,6 +1436,11 @@ def main():
     parser.add_argument('--decks', default='current_commander_decks', help='Directory containing decklists')
     parser.add_argument('--output', default='json_outputs/semantic_meta_analysis_results.json', help='Output file for analysis results')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
+    parser.add_argument(
+        '--embed-all-cards',
+        action='store_true',
+        help='Embed the full card database instead of only cards seen in decklists.'
+    )
     
     args = parser.parse_args()
     
@@ -1596,8 +1501,16 @@ def main():
                 else:
                     print(f"  '{deck_card}' has no close matches in database")
         
+        all_decklist_cards = set()
+        for decklist in decklists.values():
+            all_decklist_cards.update(decklist)
+
+        relevant_cards = None if args.embed_all_cards else all_decklist_cards
+        if relevant_cards is not None:
+            print(f"Restricting embeddings to {len(relevant_cards)} unique decklist cards")
+
         # Initialize analyzer
-        analyzer = MTGSemanticAnalyzer(card_db)
+        analyzer = MTGSemanticAnalyzer(card_db, relevant_cards=relevant_cards)
         
         # Perform meta analysis
         print("\nAnalyzing meta...")

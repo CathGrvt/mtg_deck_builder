@@ -79,18 +79,24 @@ All meta analysis scripts are maintained in the repository as they provide compl
    Plans to integrate an AI model that **auto-generates** decklists—unconstrained by conventional archetype thinking.
 
 ## Installation
-Since this project is still under active development, an official list of dependencies (`requirements.txt`) isn't available yet. You'll likely need:
-- **Python 3.x**
-- Common data libraries like **pandas**, **numpy**, **requests**, etc.
-- For semantic analysis: **sentence-transformers**, **scikit-learn**
-- For deck name analysis: **inflect**
+Install dependencies from the provided requirements files:
+- `requirements.txt` for runtime dependencies
+- `requirements-dev.txt` for runtime + development tooling (tests)
 
 Clone the repo:
 ```bash
 git clone https://github.com/georgejieh/mtg_ai_deck_builder.git
 cd mtg_ai_deck_builder
 ```
-Then install any libraries that come up as you test the scripts (e.g., `pip install pandas requests sentence-transformers scikit-learn inflect`).
+Then install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+For development/test work:
+```bash
+pip install -r requirements-dev.txt
+```
 
 ## Usage Example
 

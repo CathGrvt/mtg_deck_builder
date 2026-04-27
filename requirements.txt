@@ -1,0 +1,7 @@
+numpy>=2.0,<3
+pandas>=2.2,<3
+requests>=2.31,<3
+beautifulsoup4>=4.12,<5
+scikit-learn>=1.5,<2
+sentence-transformers>=3.0,<4
+inflect>=7.3,<8

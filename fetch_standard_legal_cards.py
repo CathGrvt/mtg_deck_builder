@@ -71,7 +71,8 @@ class ScryfallFetcher:
                 return response.content
                 
         except requests.exceptions.RequestException as e:
-            if response.status_code == 429:
+            status_code = getattr(getattr(e, "response", None), "status_code", None)
+            if status_code == 429:
                 self.logger.error("Rate limit exceeded. Waiting before retry...")
                 time.sleep(1)  # Wait longer before retry
                 return self._make_request(endpoint, params, format_type)
@@ -150,6 +151,7 @@ class ScryfallFetcher:
                 back_face_type = ""
                 mana_cost = ""
                 colors = []
+                front_face = {}
                 
                 # Get face-specific data from card_faces
                 if 'card_faces' in card and card['card_faces']:

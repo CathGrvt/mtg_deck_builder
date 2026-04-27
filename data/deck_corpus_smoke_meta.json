@@ -1,0 +1,29 @@
+{
+  "deck_names": [
+    "Deck - Abdel Adrian, Gorion's Ward & Candlekeep Sage",
+    "Deck - Avatar Aang",
+    "Deck - Cloud, Ex-SOLDIER",
+    "Deck - Edgar Markov",
+    "Deck - Fire Lord Azula",
+    "Deck - Fire Lord Zuko",
+    "Deck - Hei Bai, Forest Guardian",
+    "Deck - Iroh, Grand Lotus",
+    "Deck - Kefka, Court Mage",
+    "Deck - Krenko, Mob Boss",
+    "Deck - Ozai, the Phoenix King",
+    "Deck - Sokka, Tenacious Tactician",
+    "Deck - Sythis, Harvest's Hand",
+    "Deck - Tifa Lockhart",
+    "Deck - Toph, the First Metalbender",
+    "Deck - Y'shtola, Night's Blessed"
+  ],
+  "color_order": [
+    "W",
+    "U",
+    "B",
+    "R",
+    "G"
+  ],
+  "cards_source": "data/commander_cards_smoke.csv",
+  "decks_source": "current_commander_decks"
+}
