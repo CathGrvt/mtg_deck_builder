@@ -2,12 +2,14 @@ import argparse
 import json
 import os
 import random
+import re
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+import requests
 
 from deck_analysis import COMMANDER_DUPLICATE_EXCEPTIONS
 from mtg_io import load_card_database, load_decklists_from_directory, safe_parse_list
@@ -50,6 +52,20 @@ class DeckSpec:
         if fmt == "commander":
             return 0.42
         return 0.4
+
+
+@dataclass
+class LLMRerankConfig:
+    """
+    Optional LLM reranking settings.
+    """
+
+    top_k: int = 0
+    strength: float = 1.0
+    model: str = "gpt-4o-mini"
+    api_key_env: str = "OPENAI_API_KEY"
+    base_url: str = "https://api.openai.com/v1"
+    timeout_sec: int = 45
 
 
 def parse_colors(raw: str) -> List[str]:
@@ -155,6 +171,10 @@ def load_cluster_model(
         data = np.load(npz_path)
         centers = data["cluster_centers"]
         cluster_colors = data["cluster_colors"]
+        card_text_embeddings = data["card_text_embeddings"] if "card_text_embeddings" in data.files else None
+        cluster_semantic_centers = (
+            data["cluster_semantic_centers"] if "cluster_semantic_centers" in data.files else None
+        )
     except Exception as e:
         print(f"Warning: failed to load cluster centers from {npz_path}: {e}")
         return None
@@ -175,11 +195,24 @@ def load_cluster_model(
         )
         return None
 
+    semantic_enabled = (
+        card_text_embeddings is not None
+        and cluster_semantic_centers is not None
+        and card_text_embeddings.shape[0] == len(card_vocab)
+        and cluster_semantic_centers.shape[0] == centers.shape[0]
+    )
+    if not semantic_enabled:
+        card_text_embeddings = None
+        cluster_semantic_centers = None
+
     return {
         "cluster_centers": centers,
         "cluster_colors": cluster_colors,
         "card_vocab": card_vocab,
         "color_order": color_order,
+        "card_text_embeddings": card_text_embeddings,
+        "cluster_semantic_centers": cluster_semantic_centers,
+        "semantic_enabled": semantic_enabled,
     }
 
 
@@ -216,6 +249,7 @@ def build_weights_with_clusters(
     cluster_model: Dict[str, Any],
     spec: "DeckSpec",
     cluster_strength: float,
+    semantic_strength: float,
 ) -> List[float]:
     """
     Build sampling weights that combine meta frequency with a trained
@@ -226,6 +260,8 @@ def build_weights_with_clusters(
     cluster_colors: np.ndarray = cluster_model["cluster_colors"]
     card_vocab: List[str] = cluster_model["card_vocab"]
     color_order: Sequence[str] = cluster_model["color_order"]
+    card_text_embeddings: Optional[np.ndarray] = cluster_model.get("card_text_embeddings")
+    cluster_semantic_centers: Optional[np.ndarray] = cluster_model.get("cluster_semantic_centers")
 
     if centers.ndim != 2 or centers.shape[0] == 0:
         return [float(training_counts.get(n, 0) + 1.0) for n in names]
@@ -256,7 +292,25 @@ def build_weights_with_clusters(
             weights.append(base)
             continue
         cluster_norm = cluster_raw / max_val
-        weights.append(base * (1.0 + cluster_strength * cluster_norm))
+
+        semantic_boost = 0.0
+        if (
+            semantic_strength > 0.0
+            and card_text_embeddings is not None
+            and cluster_semantic_centers is not None
+            and idx < card_text_embeddings.shape[0]
+            and cluster_id < cluster_semantic_centers.shape[0]
+        ):
+            card_vec = card_text_embeddings[idx]
+            cluster_vec = cluster_semantic_centers[cluster_id]
+            denom = float(np.linalg.norm(card_vec) * np.linalg.norm(cluster_vec))
+            if denom > 0.0:
+                cosine_sim = float(np.dot(card_vec, cluster_vec) / denom)
+                semantic_boost = max(0.0, cosine_sim)
+
+        cluster_factor = 1.0 + cluster_strength * cluster_norm
+        semantic_factor = 1.0 + semantic_strength * semantic_boost
+        weights.append(base * cluster_factor * semantic_factor)
     return weights
 
 
@@ -274,12 +328,211 @@ def weighted_choice(
     return rng.choices(names, weights=weights, k=1)[0]
 
 
+def _extract_json_scores(text: str) -> Dict[str, float]:
+    """
+    Parse LLM output and extract a name -> score mapping.
+    Expected format:
+      {"scores": {"Card Name": 87, ...}}
+    """
+    if not text:
+        return {}
+
+    payload: Any = None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+        if not match:
+            return {}
+        try:
+            payload = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return {}
+
+    if not isinstance(payload, dict):
+        return {}
+
+    raw_scores = payload.get("scores", payload)
+    if not isinstance(raw_scores, dict):
+        return {}
+
+    scores: Dict[str, float] = {}
+    for name, value in raw_scores.items():
+        try:
+            scores[str(name)] = float(value)
+        except (TypeError, ValueError):
+            continue
+    return scores
+
+
+def score_cards_with_llm(
+    card_briefs: Sequence[Dict[str, Any]],
+    spec: DeckSpec,
+    llm_config: LLMRerankConfig,
+    category: str,
+) -> Dict[str, float]:
+    """
+    Score a candidate subset with an LLM.
+    Returns dict: card_name -> 0..100 score (higher is better fit).
+    """
+    if not card_briefs:
+        return {}
+
+    api_key = os.getenv(llm_config.api_key_env, "")
+    if not api_key:
+        raise ValueError(
+            f"Environment variable '{llm_config.api_key_env}' is not set; "
+            "cannot use LLM reranking."
+        )
+
+    requested_colors = "".join(spec.colors) if spec.colors else "any"
+    archetype = spec.archetype or "unspecified"
+    system_prompt = (
+        "You are an expert MTG deck construction assistant. "
+        "Score each candidate card for how well it fits the requested deck plan. "
+        "Output strict JSON only."
+    )
+    user_payload = {
+        "task": "score_cards_for_deck",
+        "format": spec.format,
+        "colors": requested_colors,
+        "archetype_hint": archetype,
+        "target_size": spec.effective_size(),
+        "category": category,
+        "candidates": list(card_briefs),
+        "output_schema": {
+            "scores": {
+                "<exact card name>": "number 0-100"
+            }
+        },
+        "instructions": [
+            "Use exact candidate card names as keys.",
+            "Score all candidates from 0 to 100.",
+            "Prefer cards that synergize with the requested strategy and colors.",
+            "Return JSON only with key 'scores'.",
+        ],
+    }
+    user_prompt = json.dumps(user_payload, ensure_ascii=False)
+
+    url = llm_config.base_url.rstrip("/") + "/chat/completions"
+    body = {
+        "model": llm_config.model,
+        "temperature": 0.0,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    response = requests.post(
+        url,
+        headers=headers,
+        json=body,
+        timeout=llm_config.timeout_sec,
+    )
+    response.raise_for_status()
+
+    data = response.json()
+    content = ""
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        message = choices[0].get("message", {})
+        if isinstance(message, dict):
+            content = str(message.get("content", "")).strip()
+
+    return _extract_json_scores(content)
+
+
+def rerank_weights_with_llm(
+    names: Sequence[str],
+    base_weights: Sequence[float],
+    name_index: Dict[str, pd.Series],
+    spec: DeckSpec,
+    llm_config: Optional[LLMRerankConfig],
+    category: str,
+    scorer: Optional[Callable[[Sequence[Dict[str, Any]], DeckSpec, LLMRerankConfig, str], Dict[str, float]]] = None,
+) -> List[float]:
+    """
+    Rerank top-K candidates with an LLM and apply multiplicative boosts.
+    """
+    if (
+        llm_config is None
+        or llm_config.top_k <= 0
+        or llm_config.strength <= 0.0
+        or not names
+    ):
+        return [float(w) for w in base_weights]
+
+    top_k = min(int(llm_config.top_k), len(names))
+    if top_k <= 1:
+        return [float(w) for w in base_weights]
+
+    ranked_indices = sorted(
+        range(len(names)),
+        key=lambda i: float(base_weights[i]),
+        reverse=True,
+    )[:top_k]
+
+    card_briefs: List[Dict[str, Any]] = []
+    for idx in ranked_indices:
+        name = names[idx]
+        row = name_index.get(name)
+        if row is None:
+            continue
+        oracle_text = str(row.get("oracle_text") or "")
+        if len(oracle_text) > 420:
+            oracle_text = oracle_text[:420] + "..."
+        card_briefs.append(
+            {
+                "name": name,
+                "type_line": str(row.get("type_line") or ""),
+                "mana_cost": str(row.get("mana_cost") or ""),
+                "cmc": float(row.get("cmc") or 0.0),
+                "oracle_text": oracle_text,
+            }
+        )
+
+    if not card_briefs:
+        return [float(w) for w in base_weights]
+
+    scorer_fn = scorer or score_cards_with_llm
+    try:
+        llm_scores = scorer_fn(card_briefs, spec, llm_config, category)
+    except Exception as e:
+        print(f"Warning: LLM rerank failed for {category}: {e}")
+        return [float(w) for w in base_weights]
+
+    if not llm_scores:
+        print(f"Warning: LLM rerank returned no usable scores for {category}.")
+        return [float(w) for w in base_weights]
+
+    reranked = [float(w) for w in base_weights]
+    for idx in ranked_indices:
+        name = names[idx]
+        raw = llm_scores.get(name)
+        if raw is None:
+            continue
+        norm = max(0.0, min(100.0, float(raw))) / 100.0
+        reranked[idx] *= (1.0 + llm_config.strength * norm)
+
+    return reranked
+
+
 def generate_deck_from_meta(
     card_db: pd.DataFrame,
     decklists: Dict[str, List[str]],
     spec: DeckSpec,
     cluster_model: Optional[Dict[str, Any]] = None,
     cluster_strength: float = 2.0,
+    semantic_strength: float = 1.0,
+    llm_rerank_config: Optional[LLMRerankConfig] = None,
+    llm_scorer: Optional[
+        Callable[[Sequence[Dict[str, Any]], DeckSpec, LLMRerankConfig, str], Dict[str, float]]
+    ] = None,
     seed: Optional[int] = None,
 ) -> List[str]:
     """
@@ -327,11 +580,31 @@ def generate_deck_from_meta(
                 cluster_model=cluster_model,
                 spec=spec,
                 cluster_strength=cluster_strength,
+                semantic_strength=semantic_strength,
             )
         return [float(training_counts.get(n, 0) + 1.0) for n in names]
 
     land_weights = build_weights(land_names)
     spell_weights = build_weights(spell_names)
+    if llm_rerank_config is not None:
+        land_weights = rerank_weights_with_llm(
+            names=land_names,
+            base_weights=land_weights,
+            name_index=name_index,
+            spec=spec,
+            llm_config=llm_rerank_config,
+            category="lands",
+            scorer=llm_scorer,
+        )
+        spell_weights = rerank_weights_with_llm(
+            names=spell_names,
+            base_weights=spell_weights,
+            name_index=name_index,
+            spec=spec,
+            llm_config=llm_rerank_config,
+            category="nonlands",
+            scorer=llm_scorer,
+        )
 
     target_size = spec.effective_size()
     target_land = int(round(target_size * spec.effective_land_ratio()))
@@ -539,6 +812,51 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--semantic-strength",
+        type=float,
+        default=1.0,
+        help=(
+            "How strongly to favor cards semantically aligned with the selected "
+            "cluster's oracle-text profile (default: 1.0)."
+        ),
+    )
+    parser.add_argument(
+        "--llm-rerank-top-k",
+        type=int,
+        default=0,
+        help=(
+            "Optional LLM rerank on top-K candidates per category (lands/nonlands). "
+            "0 disables (default: 0)."
+        ),
+    )
+    parser.add_argument(
+        "--llm-strength",
+        type=float,
+        default=1.0,
+        help="Strength of LLM rerank boost when enabled (default: 1.0).",
+    )
+    parser.add_argument(
+        "--llm-model",
+        default="gpt-4o-mini",
+        help="Chat model to use for LLM reranking (default: gpt-4o-mini).",
+    )
+    parser.add_argument(
+        "--llm-api-key-env",
+        default="OPENAI_API_KEY",
+        help="Environment variable holding API key for LLM reranking (default: OPENAI_API_KEY).",
+    )
+    parser.add_argument(
+        "--llm-base-url",
+        default="https://api.openai.com/v1",
+        help="Base URL for chat-completions API (default: https://api.openai.com/v1).",
+    )
+    parser.add_argument(
+        "--llm-timeout-sec",
+        type=int,
+        default=45,
+        help="HTTP timeout in seconds for LLM reranking requests (default: 45).",
+    )
+    parser.add_argument(
         "--output",
         default=None,
         help="Optional path to write the generated decklist as a .txt file.",
@@ -603,6 +921,31 @@ def main() -> None:
 
     if args.cluster_model and cluster_model is not None:
         print(f"Using cluster model with strength {args.cluster_strength:.2f}")
+        if cluster_model.get("semantic_enabled"):
+            print(f"Using semantic textbox weighting with strength {args.semantic_strength:.2f}")
+
+    llm_rerank_config: Optional[LLMRerankConfig] = None
+    if args.llm_rerank_top_k > 0 and args.llm_strength > 0.0:
+        if os.getenv(args.llm_api_key_env):
+            llm_rerank_config = LLMRerankConfig(
+                top_k=max(0, int(args.llm_rerank_top_k)),
+                strength=max(0.0, float(args.llm_strength)),
+                model=args.llm_model,
+                api_key_env=args.llm_api_key_env,
+                base_url=args.llm_base_url,
+                timeout_sec=max(1, int(args.llm_timeout_sec)),
+            )
+            print(
+                "Using LLM reranking: "
+                f"top_k={llm_rerank_config.top_k}, "
+                f"strength={llm_rerank_config.strength:.2f}, "
+                f"model={llm_rerank_config.model}"
+            )
+        else:
+            print(
+                f"Warning: LLM reranking requested but env var "
+                f"'{args.llm_api_key_env}' is not set; skipping."
+            )
 
     print("\nGenerating deck...")
     deck = generate_deck_from_meta(
@@ -611,6 +954,8 @@ def main() -> None:
         spec=spec,
         cluster_model=cluster_model,
         cluster_strength=args.cluster_strength,
+        semantic_strength=args.semantic_strength,
+        llm_rerank_config=llm_rerank_config,
         seed=args.seed,
     )
 

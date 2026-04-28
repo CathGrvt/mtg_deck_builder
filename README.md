@@ -142,7 +142,36 @@ python consolidated_meta_analysis.py
 
 Each script will generate its own analysis output file and display a summary report in the console.
 
-### 6. Generate a Deck with the Baseline AI Generator
+### 6. Build an Efficient Deck Corpus and Train Clusters
+
+For larger datasets, build the training corpus using a sparse CSR matrix (more memory-efficient than dense arrays):
+
+```bash
+python deck_corpus_builder.py \
+  --cards data/commander_cards.csv \
+  --decks current_commander_decks \
+  --output-prefix data/deck_corpus \
+  --min-card-frequency 2
+```
+
+Then train a lightweight cluster model:
+
+```bash
+python train_deck_generator.py \
+  --corpus-prefix data/deck_corpus \
+  --cards data/commander_cards.csv \
+  --semantic-dim 64 \
+  --clusters 16 \
+  --output-prefix models/deck_kmeans
+```
+
+This now trains a hybrid model:
+- structure from deck co-occurrence clusters
+- semantics from oracle textbox embeddings (TF-IDF + SVD)
+
+The corpus metadata (`<prefix>_meta.json`) includes quality stats such as coverage ratio, unknown-card count, and matrix density.
+
+### 7. Generate a Deck with the Baseline AI Generator
 
 Once you have a card database and a directory of example decklists (Commander or another format), you can ask the generator to produce a new list:
 
@@ -151,9 +180,13 @@ Once you have a card database and a directory of example decklists (Commander or
 python ai_deck_generator.py \
   --cards data/commander_cards.csv \
   --training-decks current_commander_decks \
+  --cluster-model models/deck_kmeans \
   --format commander \
   --colors WR \
   --size 100 \
+  --semantic-strength 1.0 \
+  --llm-rerank-top-k 20 \
+  --llm-strength 0.8 \
   --output generated_decks/boros_commander_ai.txt
 ```
 
@@ -169,7 +202,15 @@ python ai_deck_generator.py \
   --output generated_decks/boros_standard_ai.txt
 ```
 
-Use `--include` and `--exclude` to force or ban specific cards, and `--seed` for reproducible outputs. The current generator is frequency-based; future iterations can plug in semantic and neural models without changing this CLI.
+Use `--include` and `--exclude` to force or ban specific cards, and `--seed` for reproducible outputs. The current generator combines frequency, cluster profile, and optional textbox semantics while keeping the same CLI.
+
+To enable LLM reranking, set an API key in the environment (defaults to `OPENAI_API_KEY`):
+
+```bash
+export OPENAI_API_KEY=...
+```
+
+Then use `--llm-rerank-top-k` to rerank only the strongest candidates from the fast model. This keeps latency/cost bounded while adding strategic reasoning on top.
 
 #### Decklist Format
 Commander decklists downloaded from MTGGoldfish (and parsed by `deck_analysis.py`) typically use explicit section headers instead of blank lines. Example:
