@@ -98,6 +98,34 @@ For development/test work:
 pip install -r requirements-dev.txt
 ```
 
+## Local UI
+Run the deck generator UI locally with Streamlit:
+
+```bash
+pip install -r requirements-ui.txt
+streamlit run mtg_ui.py
+```
+
+The app opens at `http://localhost:8501`.
+The UI now includes:
+- `Generate Deck` tab for deck creation
+- `Train Model` tab for corpus build + model training
+
+### Docker UI
+Build and run with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+Then open `http://localhost:8501`.
+
+If you want LLM reranking in the UI, pass your API key:
+
+```bash
+OPENAI_API_KEY=your_key_here docker compose up --build
+```
+
 ## Usage Example
 
 ### 1. Fetch Commander-Legal Cards
