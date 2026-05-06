@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 from datetime import datetime, timezone
@@ -10,12 +11,15 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import pandas as pd
 import requests
 import streamlit as st
+from sklearn.metrics.pairwise import cosine_similarity
 
 from mtg_io import load_card_database, load_decklists_from_directory
 from research_pipeline.llm import RuleBasedLLM
+from research_pipeline.models import RetrievedChunk
 from research_pipeline.reporting import report_to_markdown
 from research_pipeline.retrieval.corpus import build_domain_corpus
 from research_pipeline.retrieval.index import HybridRetrievalIndex
+from research_pipeline.set_aliases import extract_set_codes_from_text
 
 
 @st.cache_data(show_spinner=False)
@@ -198,6 +202,132 @@ def _call_openai_chat_completion(
     return str(message.get("content", "")).strip()
 
 
+def _augment_with_set_filtered_cards(
+    index: HybridRetrievalIndex,
+    query: str,
+    base_results: Sequence[RetrievedChunk],
+    set_codes: Sequence[str],
+    max_results: int,
+) -> List[RetrievedChunk]:
+    if not set_codes:
+        return list(base_results)
+
+    wanted_codes = {code.lower() for code in set_codes if code}
+    if not wanted_codes:
+        return list(base_results)
+
+    query_vec = index.vectorizer.transform([query])
+    lexical_scores = cosine_similarity(query_vec, index.lexical_matrix).flatten()
+
+    candidates: List[tuple[int, float]] = []
+    for idx, chunk in enumerate(index.chunks):
+        if chunk.source != "card_db":
+            continue
+        chunk_set = str(chunk.metadata.get("set", "")).strip().lower()
+        if chunk_set and chunk_set in wanted_codes:
+            candidates.append((idx, float(lexical_scores[idx])))
+
+    candidates.sort(key=lambda item: item[1], reverse=True)
+
+    set_ranked_results: List[RetrievedChunk] = []
+    seen_ids = set()
+    for idx, score in candidates:
+        chunk = index.chunks[idx]
+        if chunk.chunk_id in seen_ids:
+            continue
+        # Explicit user set constraints should dominate ranking for chat contexts.
+        boosted_score = 1.0 + float(score)
+        set_ranked_results.append(RetrievedChunk.from_chunk(chunk=chunk, score=boosted_score))
+        seen_ids.add(chunk.chunk_id)
+        if len(set_ranked_results) >= max_results:
+            break
+
+    merged: List[RetrievedChunk] = list(set_ranked_results)
+    for item in base_results:
+        if item.chunk_id in seen_ids:
+            continue
+        merged.append(item)
+        seen_ids.add(item.chunk_id)
+        if len(merged) >= max_results:
+            break
+
+    return merged
+
+
+def _extract_focus_terms(text: str) -> List[str]:
+    stopwords = {
+        "the",
+        "and",
+        "for",
+        "with",
+        "that",
+        "this",
+        "from",
+        "into",
+        "your",
+        "their",
+        "about",
+        "what",
+        "which",
+        "when",
+        "where",
+        "how",
+        "why",
+        "some",
+        "good",
+        "cards",
+        "commander",
+        "deck",
+    }
+    tokens = [
+        token
+        for token in re.findall(r"[a-zA-Z0-9']+", text.lower())
+        if len(token) >= 4 and token not in stopwords
+    ]
+    seen = set()
+    deduped = []
+    for token in tokens:
+        if token in seen:
+            continue
+        seen.add(token)
+        deduped.append(token)
+    return deduped[:8]
+
+
+def _find_explicit_card_mentions(index: HybridRetrievalIndex, question: str) -> List[RetrievedChunk]:
+    question_lower = str(question or "").lower()
+    if not question_lower.strip():
+        return []
+
+    matches: List[RetrievedChunk] = []
+    seen = set()
+    for chunk in index.chunks:
+        if chunk.source != "card_db":
+            continue
+
+        title = str(chunk.title or "").strip().lower()
+        if not title:
+            continue
+
+        short_title = title.split(",")[0].strip()
+        direct_match = title in question_lower
+        short_match = bool(
+            short_title
+            and len(short_title) >= 4
+            and re.search(rf"\b{re.escape(short_title)}\b", question_lower)
+        )
+        if not (direct_match or short_match):
+            continue
+
+        chunk_id = str(chunk.chunk_id)
+        if chunk_id in seen:
+            continue
+        seen.add(chunk_id)
+        matches.append(RetrievedChunk.from_chunk(chunk=chunk, score=2.0))
+
+    return matches
+
+
 def generate_chatbot_answer(
     question: str,
     index: HybridRetrievalIndex,
@@ -210,7 +340,33 @@ def generate_chatbot_answer(
     llm_timeout_sec: int,
     llm_temperature: float,
 ) -> Tuple[str, List[Dict[str, Any]]]:
-    retrieved = index.search(question, top_k=max(1, int(top_k)))
+    available_set_codes = {
+        str(chunk.metadata.get("set", "")).strip().lower()
+        for chunk in index.chunks
+        if chunk.source == "card_db" and str(chunk.metadata.get("set", "")).strip()
+    }
+    set_codes = extract_set_codes_from_text(question, valid_codes=available_set_codes)
+
+    query_terms = [question]
+    explicit_commander_mentions = _find_explicit_card_mentions(index=index, question=question)
+    if explicit_commander_mentions:
+        query_terms.extend(_extract_focus_terms(explicit_commander_mentions[0].text))
+    expanded_query = " ".join(part for part in query_terms if part.strip())
+
+    retrieved = index.search(expanded_query, top_k=max(1, int(top_k)))
+    if explicit_commander_mentions:
+        # Force explicit commander context into the final evidence pool.
+        retrieved = explicit_commander_mentions + [
+            item for item in retrieved if item.chunk_id != explicit_commander_mentions[0].chunk_id
+        ]
+    if set_codes:
+        retrieved = _augment_with_set_filtered_cards(
+            index=index,
+            query=expanded_query,
+            base_results=retrieved,
+            set_codes=set_codes,
+            max_results=max(12, int(top_k) * 2),
+        )
     evidence = [item.to_dict() for item in retrieved]
 
     if not retrieved:

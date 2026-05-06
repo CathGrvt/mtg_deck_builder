@@ -11,6 +11,7 @@ import pandas as pd
 
 from mtg_io import load_decklists_from_directory
 from research_pipeline.models import DocumentChunk
+from research_pipeline.set_aliases import set_name_for_code
 
 
 def _slugify(text: str) -> str:
@@ -98,22 +99,31 @@ def _row_to_card_text(row: pd.Series) -> str:
     type_line = str(row.get("type_line", "")).strip()
     oracle_text = str(row.get("oracle_text", "")).strip()
     mana_cost = str(row.get("mana_cost", "")).strip()
+    set_code = str(row.get("set", "")).strip().lower()
+    set_name = set_name_for_code(set_code)
     color_identity = row.get("color_identity", [])
     keywords = row.get("keywords", [])
 
     color_identity_text = ", ".join(color_identity) if isinstance(color_identity, list) else str(color_identity)
     keywords_text = ", ".join(keywords) if isinstance(keywords, list) else str(keywords)
+    set_text_parts = []
+    if set_code:
+        set_text_parts.append(f"Set code: {set_code}.")
+    if set_name:
+        set_text_parts.append(f"Set name: {set_name}.")
+    set_text = " ".join(set_text_parts)
 
     return (
         f"Card {name}. Type: {type_line}. Mana cost: {mana_cost}. "
         f"Color identity: {color_identity_text}. Keywords: {keywords_text}. "
+        f"{set_text} "
         f"Oracle text: {oracle_text}."
     )
 
 
 def build_card_chunks(
     cards_csv: str,
-    max_cards: int = 6000,
+    max_cards: int = 0,
     chunk_size: int = 180,
     overlap: int = 35,
 ) -> List[DocumentChunk]:
@@ -130,7 +140,8 @@ def build_card_chunks(
     chunks: List[DocumentChunk] = []
     unique = card_db.drop_duplicates(subset="name")
 
-    for _, row in unique.head(max(0, max_cards)).iterrows():
+    rows = unique if int(max_cards) <= 0 else unique.head(max(0, int(max_cards)))
+    for _, row in rows.iterrows():
         name = str(row.get("name", "")).strip()
         if not name:
             continue
@@ -151,7 +162,8 @@ def build_card_chunks(
                     metadata={
                         "card_name": name,
                         "type_line": str(row.get("type_line", "")),
-                        "set": str(row.get("set", "")),
+                        "set": str(row.get("set", "")).lower(),
+                        "set_name": set_name_for_code(str(row.get("set", "")).lower()),
                     },
                 )
             )
@@ -222,7 +234,7 @@ def build_domain_corpus(
     decks_dir: Optional[str] = None,
     meta_json_paths: Optional[Sequence[str]] = None,
     max_decks: int = 400,
-    max_cards: int = 6000,
+    max_cards: int = 0,
     chunk_size: int = 180,
     overlap: int = 35,
 ) -> List[DocumentChunk]:
