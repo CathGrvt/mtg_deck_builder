@@ -110,6 +110,8 @@ The app opens at `http://localhost:8501`.
 The UI now includes:
 - `Generate Deck` tab for deck creation
 - `Train Model` tab for corpus build + model training
+- `Agentic Research` tab for planner → retriever → critic → writer reports
+- `Chatbot` tab for retrieval-grounded conversational Q&A
 
 ### Docker UI
 Build and run with Docker Compose:
