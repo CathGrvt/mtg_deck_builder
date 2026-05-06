@@ -44,3 +44,5 @@ coverage.xml
 Thumbs.db
 
 current_*
+data/
+json_outputs/

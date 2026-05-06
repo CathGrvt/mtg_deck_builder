@@ -140,6 +140,17 @@ Scrape the latest Commander deck lists from MTGGoldfish (and keep the Commander/
 python current_standard_deck_list_scraper.py --format commander --min-meta 1.0
 ```
 
+Alternative source (Archidekt API, useful when MTGGoldfish scraping is flaky or blocked):
+```bash
+python archidekt_deck_list_scraper.py \
+  --format commander \
+  --min-meta 0.2 \
+  --top-k 500 \
+  --max-decks 500 \
+  --max-pages 9
+```
+The Archidekt scraper applies format-aware size filters by default (`Commander: 95-120 cards`) to reduce malformed lists. Override with `--min-total-cards` / `--max-total-cards`.
+
 ### 3. Analyze a Deck
 To analyze a single deck list, place your deck in a `.txt` file (Commander sections supported) and run:
 ```bash
