@@ -1,0 +1,5 @@
+from research_pipeline.eval.run_eval import main
+
+
+if __name__ == "__main__":
+    main()

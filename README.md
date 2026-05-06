@@ -277,6 +277,47 @@ Deck
 
 If you're analyzing a non-Commander list, you can still split the mainboard and sideboard with a blank line—the parser will continue to recognize both layouts.
 
+### 8. Run the Agentic Research Pipeline (Planner → Retriever → Critic → Writer)
+
+The repository now includes a production-style research pipeline under `research_pipeline/`:
+
+- Agentic loop with optional LangGraph execution (`planner -> retriever -> critic -> writer -> validator`)
+- Hybrid RAG retrieval (lexical + semantic) over a real MTG corpus (decklists, card DB, meta JSON)
+- Trace logging (`trace.jsonl`) for node-level observability
+- Structured report output with explicit citations (`doc_id`, `chunk_id`)
+
+Run a single topic:
+
+```bash
+python run_research_pipeline.py \
+  "What card advantage patterns appear most often in successful Boros commander decks?" \
+  --cards data/commander_cards.csv \
+  --decks current_commander_decks
+```
+
+This creates a timestamped folder in `runs/` with:
+- `report.json` (structured report)
+- `report.md` (readable report)
+- `state.json` (full pipeline state)
+- `trace.jsonl` (observability trace)
+
+### 9. Run the Eval Harness (Faithfulness, Groundedness, Citation Accuracy)
+
+An eval harness is included in `research_pipeline/eval/` with a starter dataset at `eval/topics.jsonl`.
+
+```bash
+python run_research_eval.py \
+  --dataset eval/topics.jsonl \
+  --cards data/commander_cards.csv \
+  --decks current_commander_decks
+```
+
+Each eval run writes artifacts into `eval_runs/<timestamp>/`:
+- `results.jsonl` (per-case outputs + metrics)
+- `summary.md` (aggregate metrics and failure breakdown)
+- `failure_analysis.md` (categorized failure analysis + suggested fixes)
+- `trace.jsonl` (execution trace for debugging regressions)
+
 ## Comparison of Meta Analysis Approaches
 
 | Feature | Pattern-Based | Keyword-Based | Semantic Analysis | Deck Name Analysis |

@@ -5,3 +5,5 @@ beautifulsoup4>=4.12,<5
 scikit-learn>=1.5,<2
 sentence-transformers>=3.0,<4
 inflect>=7.3,<8
+
+langgraph>=0.2,<2
