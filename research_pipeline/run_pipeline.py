@@ -4,9 +4,9 @@ import argparse
 import json
 import os
 from datetime import datetime, timezone
-from typing import List
 
 from research_pipeline.graph import build_pipeline_from_local_data
+from research_pipeline.reporting import report_to_markdown
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,39 +31,6 @@ def parse_args() -> argparse.Namespace:
         help="Output directory for report artifacts.",
     )
     return parser.parse_args()
-
-
-def _report_to_markdown(report: dict) -> str:
-    lines: List[str] = [
-        f"# Research Report: {report.get('topic', '')}",
-        "",
-        "## Summary",
-        report.get("summary", ""),
-        "",
-        "## Claims",
-    ]
-
-    claims = report.get("claims", [])
-    if not claims:
-        lines.append("- No claims produced.")
-    else:
-        for claim in claims:
-            claim_text = claim.get("claim", "")
-            confidence = claim.get("confidence", 0.0)
-            citations = claim.get("citations", [])
-            citation_text = ", ".join(
-                [f"{item.get('doc_id')}::{item.get('chunk_id')}" for item in citations]
-            )
-            lines.append(
-                f"- {claim_text} (confidence={confidence}, citations=[{citation_text}])"
-            )
-
-    lines.extend(["", "## Open Questions"])
-    for question in report.get("open_questions", []):
-        lines.append(f"- {question}")
-
-    lines.extend(["", "## Validation", "```json", json.dumps(report.get("validation", {}), indent=2), "```", ""])
-    return "\n".join(lines)
 
 
 def main() -> None:
@@ -102,7 +69,7 @@ def main() -> None:
         json.dump(output["state"], handle, indent=2)
 
     with open(report_md, "w", encoding="utf-8") as handle:
-        handle.write(_report_to_markdown(report))
+        handle.write(report_to_markdown(report))
 
     print("Research pipeline run completed.")
     print(f"run_dir: {run_dir}")
