@@ -4,6 +4,58 @@ _Unleash the power of **Machine Learning** to forge next-level **Magic: The Gath
 [![Magic: The Gathering](https://img.shields.io/badge/Magic%3A%20the%20Gathering-AI%20Deck%20Builder-blue)](#)
 [![Python](https://img.shields.io/badge/Python-3.x-blue.svg)](#)
 [![Unsupervised Learning](https://img.shields.io/badge/Machine%20Learning-Unsupervised-green)](#)
+[![CI](https://github.com/CathGrvt/mtg_deck_builder/actions/workflows/ci.yml/badge.svg)](https://github.com/CathGrvt/mtg_deck_builder/actions/workflows/ci.yml)
+
+## Fork Context + My Contributions
+This repository is a fork of [`georgejieh/mtg_ai_deck_builder`](https://github.com/georgejieh/mtg_ai_deck_builder).  
+The work in this fork focuses on adding a production-style agentic research stack, evals, and observability on top of the original deck-analysis/generation foundation.
+
+### What I Added On Top of the Fork
+- `research_pipeline/`: end-to-end agentic loop (`planner -> retriever -> critic -> writer -> validator`) with optional LangGraph runtime and manual-loop fallback.
+- `research_pipeline/retrieval/`: hybrid retrieval (`lexical + semantic`) over local MTG corpus sources (decklists, card DB, meta JSON).
+- `research_pipeline/eval/` + `run_research_eval.py`: eval harness with groundedness, faithfulness, citation precision/recall, and failure classification.
+- `research_pipeline/trace.py`: node-level trace logging to `trace.jsonl` for debugging and regression analysis.
+- `mtg_ui_app/agentic_tab.py` and `mtg_ui_app/chat_tab.py`: Streamlit interfaces for agentic report generation and retrieval-grounded chat.
+- Dockerized local UI workflow (`Dockerfile.ui`, `docker-compose.yml`) for reproducible runs.
+
+### Agentic Architecture
+```mermaid
+flowchart LR
+    A[Research Topic] --> B[Planner]
+    B --> C[Retriever<br/>Hybrid RAG]
+    C --> D[Critic]
+    D -->|Needs more evidence| C
+    D -->|Enough evidence| E[Writer]
+    E --> F[Validator]
+    F --> G[report.json / report.md]
+
+    B -. node events .-> H[(trace.jsonl)]
+    C -. node events .-> H
+    D -. node events .-> H
+    E -. node events .-> H
+    F -. node events .-> H
+```
+
+### Eval Scope and Artifacts
+- Starter eval dataset: `eval/topics.jsonl` currently contains **24** research cases.
+- Cases include `category` and `difficulty` metadata for stratified analysis (see `docs/eval_dataset.md`).
+- Each run writes to `eval_runs/<timestamp>/`:
+  - `results.jsonl`
+  - `summary.md`
+  - `failure_analysis.md`
+  - `trace.jsonl`
+- Failure taxonomy includes: `retrieval_miss`, `bad_citation`, `hallucinated_claim`.
+
+### Runtime Modes (No API Key vs API Key)
+| Capability | No `OPENAI_API_KEY` | With `OPENAI_API_KEY` |
+|---|---|---|
+| Agentic pipeline synthesis | Deterministic `RuleBasedLLM` fallback | OpenAI chat synthesis |
+| Chatbot synthesis | Retrieval + rule-based answer synthesis | Retrieval + OpenAI answer synthesis |
+| Deck generator reranking | Disabled; baseline scoring only | Enabled via `--llm-rerank-top-k` |
+
+### CI/Test Status
+- Test suite exists under `tests/` and can be run with `pytest`.
+- GitHub Actions CI (`.github/workflows/ci.yml`) runs tests on push/PR and publishes a status badge.
 
 ## Overview
 **MTG AI Deck Builder** aims to train a **dynamic**, unsupervised **AI model** that consistently updates itself to generate competitive **Commander** decks (with optional support for other formats). By tapping into the **Scryfall** API for card data, it analyzes existing decks and the broader meta—ultimately discovering creative synergies and archetype strategies that might be overlooked by the community.
@@ -83,12 +135,13 @@ Install dependencies from the provided requirements files:
 - `requirements.txt` for runtime dependencies
 - `requirements-dev.txt` for runtime + development tooling (tests)
 
-Clone the repo:
+Clone this fork (recommended):
 ```bash
-git clone https://github.com/georgejieh/mtg_ai_deck_builder.git
-cd mtg_ai_deck_builder
+git clone https://github.com/CathGrvt/mtg_deck_builder.git
+cd mtg_deck_builder
 ```
-Then install dependencies:
+
+If you already have the repo locally, just `cd` into it and install dependencies:
 ```bash
 pip install -r requirements.txt
 ```

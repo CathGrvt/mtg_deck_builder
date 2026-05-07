@@ -16,6 +16,7 @@ from mtg_io import load_card_database, load_decklists_from_directory, safe_parse
 
 
 COLOR_ORDER = ["W", "U", "B", "R", "G"]
+CARD_NAME_KEY_RE = re.compile(r"[^a-z0-9]+")
 
 
 @dataclass
@@ -90,6 +91,116 @@ def build_name_index(card_db: pd.DataFrame) -> Dict[str, pd.Series]:
         raise ValueError("Card database must contain a 'name' column")
     unique = card_db.drop_duplicates(subset="name")
     return {row["name"]: row for _, row in unique.iterrows()}
+
+
+def _canonicalize_card_name_key(name: str) -> str:
+    """
+    Build a punctuation-insensitive key for loose card name matching.
+    """
+    return CARD_NAME_KEY_RE.sub("", str(name).lower())
+
+
+def _build_card_name_lookup(
+    name_index: Dict[str, pd.Series],
+) -> Tuple[Dict[str, str], Dict[str, str]]:
+    """
+    Build exact/lax lookup maps from user-entered card text to canonical names.
+    """
+    exact_lookup: Dict[str, str] = {}
+    lax_lookup: Dict[str, str] = {}
+
+    for canonical_name, row in name_index.items():
+        aliases = [str(canonical_name).strip()]
+        full_name = str(row.get("full_name") or "").strip()
+        if full_name and full_name not in aliases:
+            aliases.append(full_name)
+
+        for alias in aliases:
+            exact_key = alias.lower()
+            if exact_key and exact_key not in exact_lookup:
+                exact_lookup[exact_key] = canonical_name
+
+            lax_key = _canonicalize_card_name_key(alias)
+            if lax_key and lax_key not in lax_lookup:
+                lax_lookup[lax_key] = canonical_name
+
+    return exact_lookup, lax_lookup
+
+
+def _resolve_single_card_name(
+    requested_name: str,
+    exact_lookup: Dict[str, str],
+    lax_lookup: Dict[str, str],
+) -> Optional[str]:
+    """
+    Resolve one requested card name to a canonical card-db name.
+    """
+    normalized = str(requested_name or "").strip()
+    if not normalized:
+        return None
+    match = exact_lookup.get(normalized.lower())
+    if match is not None:
+        return match
+    return lax_lookup.get(_canonicalize_card_name_key(normalized))
+
+
+def resolve_requested_card_names(
+    requested_names: Sequence[str],
+    name_index: Dict[str, pd.Series],
+) -> Tuple[List[str], List[str]]:
+    """
+    Resolve user-entered card names into canonical db names.
+
+    Handles:
+    - case-insensitive exact matching
+    - punctuation-insensitive matching (e.g., missing commas)
+    - adjacent token merging for comma-split entries
+    """
+    exact_lookup, lax_lookup = _build_card_name_lookup(name_index)
+
+    tokens = [str(name or "").strip() for name in requested_names if str(name or "").strip()]
+    resolved: List[str] = []
+    missing: List[str] = []
+
+    i = 0
+    while i < len(tokens):
+        current = tokens[i]
+        matched = _resolve_single_card_name(current, exact_lookup, lax_lookup)
+        consumed = 1
+
+        if matched is None:
+            # Recover from comma-splitting by trying to merge nearby tokens.
+            max_window = min(4, len(tokens) - i)
+            for window in range(max_window, 1, -1):
+                parts = tokens[i : i + window]
+                candidates = [", ".join(parts), " ".join(parts)]
+                for candidate in candidates:
+                    matched = _resolve_single_card_name(candidate, exact_lookup, lax_lookup)
+                    if matched is not None:
+                        consumed = window
+                        break
+                if matched is not None:
+                    break
+
+        if matched is None:
+            missing.append(current)
+            i += 1
+            continue
+
+        resolved.append(matched)
+        i += consumed
+
+    # Deduplicate while preserving order.
+    deduped: List[str] = []
+    seen = set()
+    for name in resolved:
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(name)
+
+    return deduped, missing
 
 
 def card_matches_colors(card: pd.Series, colors: Sequence[str]) -> bool:
@@ -547,10 +658,19 @@ def generate_deck_from_meta(
     name_index = build_name_index(card_db)
     training_counts = build_training_counts(decklists) if decklists else Counter()
 
+    resolved_exclude, missing_exclude = resolve_requested_card_names(spec.exclude_cards, name_index)
+    resolved_include, missing_include = resolve_requested_card_names(spec.include_cards, name_index)
+    exclude_set = set(resolved_exclude)
+
+    for name in missing_exclude:
+        print(f"Warning: requested exclude card '{name}' not found in card database.")
+    for name in missing_include:
+        print(f"Warning: requested include card '{name}' not found in card database.")
+
     # Filter allowed cards by color and exclusions
     allowed_names: List[str] = []
     for name, row in name_index.items():
-        if name in spec.exclude_cards:
+        if name in exclude_set:
             continue
         if card_matches_colors(row, spec.colors):
             allowed_names.append(name)
@@ -613,12 +733,12 @@ def generate_deck_from_meta(
     counts: Counter = Counter()
 
     # First, honor include_cards as much as possible
-    for name in spec.include_cards:
+    for name in resolved_include:
         row = name_index.get(name)
         if row is None:
             print(f"Warning: requested include card '{name}' not found in card database.")
             continue
-        if name in spec.exclude_cards:
+        if name in exclude_set:
             print(f"Warning: requested include card '{name}' is also excluded; skipping.")
             continue
         limit = max_allowed_copies(name, row, spec)

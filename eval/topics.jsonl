@@ -1,8 +1,24 @@
-{"id":"commander-ramp-density","topic":"What does current commander deck data suggest about practical ramp density targets for midrange shells?"}
-{"id":"graveyard-hate","topic":"How should commander deckbuilders balance graveyard hate slots without overloading reactive cards?"}
-{"id":"boros-card-advantage","topic":"What card advantage patterns appear most often in successful Boros commander decks?"}
-{"id":"interaction-package","topic":"What interaction package sizes are common in top-performing commander decklists?"}
-{"id":"mana-base-stability","topic":"How do commander decks stabilize three-color mana bases according to observed deck composition?"}
-{"id":"artifact-synergy-risk","topic":"What are the strategic tradeoffs of heavy artifact synergy packages in commander?"}
-{"id":"board-wipe-frequency","topic":"How often do commander decklists include board wipes and what roles do they serve?"}
-{"id":"single-target-removal","topic":"What does deck data indicate about efficient single-target removal distribution in commander?"}
+{"id":"commander-ramp-density","topic":"What does current commander deck data suggest about practical ramp density targets for midrange shells?","category":"ramp","difficulty":"medium"}
+{"id":"graveyard-hate","topic":"How should commander deckbuilders balance graveyard hate slots without overloading reactive cards?","category":"interaction","difficulty":"medium"}
+{"id":"boros-card-advantage","topic":"What card advantage patterns appear most often in successful Boros commander decks?","category":"card_advantage","difficulty":"medium"}
+{"id":"interaction-package","topic":"What interaction package sizes are common in top-performing commander decklists?","category":"interaction","difficulty":"easy"}
+{"id":"mana-base-stability","topic":"How do commander decks stabilize three-color mana bases according to observed deck composition?","category":"mana_base","difficulty":"medium"}
+{"id":"artifact-synergy-risk","topic":"What are the strategic tradeoffs of heavy artifact synergy packages in commander?","category":"synergy","difficulty":"hard"}
+{"id":"board-wipe-frequency","topic":"How often do commander decklists include board wipes and what roles do they serve?","category":"interaction","difficulty":"easy"}
+{"id":"single-target-removal","topic":"What does deck data indicate about efficient single-target removal distribution in commander?","category":"interaction","difficulty":"easy"}
+{"id":"tutor-density-tradeoff","topic":"What tutor package sizes appear most often, and when do decks reduce tutors to avoid slot compression?","category":"consistency","difficulty":"hard"}
+{"id":"draw-engine-vs-burst","topic":"What balance between repeatable draw engines and one-shot draw spells appears in successful commander lists?","category":"card_advantage","difficulty":"medium"}
+{"id":"recursion-package-sizing","topic":"How many recursion effects are typically included before redundancy starts crowding proactive game plans?","category":"resilience","difficulty":"hard"}
+{"id":"protection-suite","topic":"What protection suite sizes are common for commander-centric strategies that rely on one key permanent?","category":"resilience","difficulty":"medium"}
+{"id":"stack-interaction-density","topic":"How much stack interaction is common in non-blue commander decks versus blue-inclusive shells?","category":"interaction","difficulty":"hard"}
+{"id":"token-strategy-vulnerability","topic":"What weaknesses do token-heavy commander decks show most often in observed deck composition and card choices?","category":"archetype","difficulty":"medium"}
+{"id":"stax-piece-inclusion","topic":"How frequently do successful commander decks include stax or taxation effects, and what support packages accompany them?","category":"archetype","difficulty":"hard"}
+{"id":"fast-mana-concentration","topic":"What does observed deck data suggest about fast-mana concentration in high-power commander environments?","category":"ramp","difficulty":"medium"}
+{"id":"land-count-by-curve","topic":"How does total land count shift with average mana curve across commander archetypes?","category":"mana_base","difficulty":"easy"}
+{"id":"color-fixing-priority","topic":"Which fixing categories (duals, fetches, rocks, ramp spells) are emphasized most in three-color commander decks?","category":"mana_base","difficulty":"medium"}
+{"id":"enchantment-removal-coverage","topic":"How often do commander lists include dedicated enchantment removal and how does that vary by color identity?","category":"interaction","difficulty":"medium"}
+{"id":"creature-to-noncreature-ratio","topic":"What creature-to-noncreature ratios are most common in successful commander midrange and control shells?","category":"composition","difficulty":"easy"}
+{"id":"win-condition-density","topic":"How many explicit win-condition cards are typical before commander decks become over-indexed on finishers?","category":"composition","difficulty":"medium"}
+{"id":"synergy-vs-goodstuff","topic":"What signals in deck composition distinguish focused synergy builds from generalized goodstuff commander decks?","category":"archetype","difficulty":"hard"}
+{"id":"hatebear-opportunity-cost","topic":"What opportunity costs appear when increasing hatebear density in creature-centric commander strategies?","category":"archetype","difficulty":"hard"}
+{"id":"graveyard-recursion-resilience","topic":"How do recurring graveyard-recursion packages affect resilience metrics and interaction slot pressure in commander decks?","category":"resilience","difficulty":"hard"}
