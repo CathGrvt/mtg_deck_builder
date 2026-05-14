@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import uuid
+from collections import Counter
 from typing import Dict, List
 
 import streamlit as st
@@ -16,6 +18,7 @@ from ai_deck_generator import (
 from ui_helpers import parse_card_list
 
 from mtg_ui_app.shared import (
+    call_deployed_recommendation,
     cached_load_card_db,
     cached_load_cluster_model,
     cached_load_decklists,
@@ -33,6 +36,24 @@ def render_generate_tab() -> None:
             "Use Cluster Model",
             value=True,
             help="Requires <prefix>.npz and <prefix>_meta.json.",
+        )
+        use_deployed_backend = st.checkbox(
+            "Use Deployed Agent Backend",
+            value=False,
+            help="Calls backend adapter API contract before local generation fallback.",
+        )
+        backend_url = st.text_input(
+            "Backend Recommendation URL",
+            value=os.getenv("MTG_GCP_BACKEND_URL", "http://localhost:8080/v1/deck/recommend"),
+            disabled=not use_deployed_backend,
+        )
+        backend_timeout = st.number_input(
+            "Backend Timeout Seconds",
+            min_value=5,
+            max_value=180,
+            value=60,
+            step=1,
+            disabled=not use_deployed_backend,
         )
         save_output = st.checkbox("Save Generated Decklist", value=False)
         output_path = st.text_input("Output File", value="generated_decks/ui_generated_deck.txt")
@@ -65,6 +86,11 @@ def render_generate_tab() -> None:
             max_value=0.60,
             value=0.42,
             step=0.01,
+        )
+        recommendation_goal = st.text_area(
+            "Recommendation Goal (for backend mode)",
+            value="Build a high-synergy and resilient deck recommendation with grounded rationale.",
+            height=100,
         )
         seed_enabled = st.checkbox("Set Random Seed", value=True)
         seed = st.number_input(
@@ -191,6 +217,80 @@ def render_generate_tab() -> None:
         include_cards=include_cards,
         exclude_cards=exclude_cards,
     )
+
+    if use_deployed_backend:
+        payload = {
+            "session_id": f"ui-{uuid.uuid4().hex[:12]}",
+            "user_query": recommendation_goal.strip() or "Generate a deck recommendation.",
+            "format": deck_format,
+            "colors": colors,
+            "archetype_hint": archetype or None,
+            "must_include": include_cards,
+            "must_exclude": exclude_cards,
+            "mode": "deck_recommendation",
+        }
+        try:
+            with st.spinner("Calling deployed backend..."):
+                backend_response = call_deployed_recommendation(
+                    backend_url=backend_url,
+                    payload=payload,
+                    timeout_sec=int(backend_timeout),
+                )
+        except Exception as e:
+            st.warning(f"Backend recommendation call failed ({e}). Falling back to local generation.")
+        else:
+            safety = backend_response.get("safety_verdict", {})
+            if bool(safety.get("blocked", False)):
+                st.error("Request blocked by backend safety policy.")
+                st.json(backend_response, expanded=False)
+                st.stop()
+
+            deck = [str(item) for item in backend_response.get("recommended_decklist", []) if str(item).strip()]
+            if deck:
+                deck_counts = Counter(deck)
+                deck_text = "\n".join(f"{count} {name}" for name, count in sorted(deck_counts.items()))
+            else:
+                deck_text = ""
+            summary = str(backend_response.get("summary", "")).strip()
+            key_claims = [str(item).strip() for item in backend_response.get("key_claims", []) if str(item).strip()]
+            citations = backend_response.get("citations", [])
+
+            st.success("Deck recommendation generated from deployed backend.")
+            st.subheader("Summary")
+            st.write(summary or "(No summary)")
+
+            if key_claims:
+                st.subheader("Key Claims")
+                for idx, claim in enumerate(key_claims, start=1):
+                    st.markdown(f"{idx}. {claim}")
+
+            if citations:
+                st.subheader("Citations")
+                for citation in citations[:8]:
+                    doc_id = citation.get("doc_id", "")
+                    chunk_id = citation.get("chunk_id", "")
+                    source = citation.get("source", "")
+                    title = citation.get("title", "")
+                    st.markdown(f"- `{doc_id}::{chunk_id}` ({source}) {title}")
+
+            st.subheader("Decklist")
+            st.code(deck_text or "(No decklist returned)", language="text")
+
+            st.download_button(
+                label="Download Decklist",
+                data=(deck_text + "\n"),
+                file_name="generated_deck.txt",
+                mime="text/plain",
+                key="download_backend_decklist",
+            )
+            if save_output and deck_text:
+                out_dir = os.path.dirname(output_path)
+                if out_dir:
+                    os.makedirs(out_dir, exist_ok=True)
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write(deck_text + "\n")
+                st.info(f"Saved to {output_path}")
+            st.stop()
 
     try:
         with st.spinner("Generating deck..."):

@@ -152,6 +152,30 @@ def build_research_index_with_feedback(
     return index, chunk_count, source_count
 
 
+def call_deployed_recommendation(
+    backend_url: str,
+    payload: Dict[str, Any],
+    timeout_sec: int = 60,
+) -> Dict[str, Any]:
+    """
+    Call deployed backend adapter endpoint that proxies to Agent Engine.
+    """
+    url = str(backend_url or "").strip()
+    if not url:
+        raise ValueError("backend_url is required.")
+
+    response = requests.post(
+        url,
+        json=payload,
+        timeout=max(5, int(timeout_sec)),
+    )
+    response.raise_for_status()
+    data = response.json()
+    if not isinstance(data, dict):
+        raise ValueError("Backend response was not a JSON object.")
+    return data
+
+
 def render_chat_evidence(evidence: Sequence[Dict[str, Any]], max_items: int = 8) -> None:
     for item in evidence[:max_items]:
         title = item.get("title", "")

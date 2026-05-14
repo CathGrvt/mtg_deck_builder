@@ -1,4 +1,23 @@
 services:
+  mtg-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8080:8080"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PORT: 8080
+      MTG_LOCAL_RETRIEVER_ENABLE_SEMANTIC: ${MTG_LOCAL_RETRIEVER_ENABLE_SEMANTIC:-false}
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).read()"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+
   mtg-ui:
     build:
       context: .
@@ -7,5 +26,9 @@ services:
       - "8501:8501"
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      MTG_GCP_BACKEND_URL: ${MTG_COMPOSE_BACKEND_URL:-http://mtg-backend:8080/v1/deck/recommend}
     volumes:
       - ./:/app
+    depends_on:
+      mtg-backend:
+        condition: service_healthy

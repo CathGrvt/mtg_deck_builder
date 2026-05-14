@@ -151,6 +151,11 @@ For development/test work:
 pip install -r requirements-dev.txt
 ```
 
+Optional local env setup:
+```bash
+cp .env.example .env
+```
+
 ## Local UI
 Run the deck generator UI locally with Streamlit:
 
@@ -166,6 +171,17 @@ The UI now includes:
 - `Agentic Research` tab for planner → retriever → critic → writer reports
 - `Chatbot` tab for retrieval-grounded conversational Q&A
 
+### Hybrid Deployed Mode (GCP)
+This repo now includes a deployable GCP runtime package under `gcp_agent_runtime/` with:
+- Multi-agent orchestration (`RootCoordinatorAgent`, `QueryRewriteAgent`, `RetrieverAgent`, `RerankAgent`, `CriticAgent`, `DeckPlanAgent`, `SafetyGateAgent`)
+- Backend API adapter contract for Cloud Run (`DeckRecommendationRequest` / `DeckRecommendationResponse`)
+- Deployment script for Vertex AI Agent Engine (`deploy_agent_engine.py`)
+- Corpus sync job entrypoint (`sync_rag_corpus.py`)
+- Vertex-style release gate + LangSmith fanout helpers (`eval/vertex_release_gate.py`, `eval/langsmith_fanout.py`)
+
+For deployment and governance details, see:
+- `docs/gcp_adk_vertex_deployment.md`
+
 ### Docker UI
 Build and run with Docker Compose:
 
@@ -174,6 +190,7 @@ docker compose up --build
 ```
 
 Then open `http://localhost:8501`.
+Compose wires the UI container to `http://mtg-backend:8080/v1/deck/recommend` internally. If you run Streamlit directly on your host instead of Compose, use `MTG_GCP_BACKEND_URL=http://localhost:8080/v1/deck/recommend`.
 
 If you want LLM reranking in the UI, pass your API key:
 
