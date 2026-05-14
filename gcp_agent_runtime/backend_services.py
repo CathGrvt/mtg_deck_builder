@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import re
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Sequence
@@ -61,6 +63,73 @@ def _history_items(raw_history: Any) -> List[Dict[str, str]]:
             continue
         rows.append({"role": role, "content": content})
     return rows
+
+
+def _token_count(text: str) -> int:
+    return len(re.findall(r"[A-Za-z0-9']+", str(text or "")))
+
+
+def _format_or_archetype_hint(text: str) -> bool:
+    lowered = str(text or "").lower()
+    hints = {
+        "commander",
+        "standard",
+        "pioneer",
+        "modern",
+        "legacy",
+        "vintage",
+        "brawl",
+        "aggro",
+        "midrange",
+        "control",
+        "tempo",
+        "combo",
+    }
+    return any(item in lowered for item in hints)
+
+
+def _likely_ambiguous_question(
+    question: str,
+    retrieved: Sequence[RetrievedChunk],
+    history: Sequence[Dict[str, str]],
+) -> bool:
+    text = str(question or "").strip()
+    if not text:
+        return True
+    token_count = _token_count(text)
+    last_assistant = next((item for item in reversed(history) if item.get("role") == "assistant"), None)
+    last_assistant_text = str(last_assistant.get("content", "")).strip().lower() if last_assistant else ""
+    if last_assistant_text.startswith("quick clarification:"):
+        return False
+
+    broad_phrases = {
+        "help me build",
+        "make me a deck",
+        "what should i play",
+        "any ideas",
+        "best deck",
+    }
+    lowered = text.lower()
+    has_broad_phrase = any(phrase in lowered for phrase in broad_phrases)
+    has_specific_hint = _format_or_archetype_hint(lowered)
+    strong_evidence = bool(retrieved and float(retrieved[0].score) >= 0.12)
+
+    if token_count <= 4 and not has_specific_hint:
+        return True
+    if has_broad_phrase and not has_specific_hint and not strong_evidence:
+        return True
+    if not strong_evidence and token_count <= 6 and not has_specific_hint:
+        return True
+    return False
+
+
+def _build_clarifying_question(question: str) -> str:
+    lowered = str(question or "").lower()
+    if not any(fmt in lowered for fmt in {"commander", "standard", "pioneer", "modern", "legacy", "vintage"}):
+        return "Quick clarification: which format do you want (Commander, Standard, Pioneer, Modern, Legacy, or Vintage)?"
+    if not any(tag in lowered for tag in {"aggro", "midrange", "control", "tempo", "combo"}):
+        return "Quick clarification: do you prefer aggro, midrange, control, tempo, or combo for this deck?"
+    return "Quick clarification: should I optimize for budget, power level, or a specific playstyle constraint?"
 
 
 class ResearchBackendService:
@@ -197,6 +266,19 @@ class ChatBackendService:
 
         top_k = _bounded_int(payload.get("top_k"), default=6, minimum=1, maximum=20)
         history = _history_items(payload.get("history", []))
+        if "enable_clarification" in payload:
+            enable_clarification = _bool_value(payload.get("enable_clarification"), default=True)
+        else:
+            enable_clarification = _bool_value(
+                value=os.getenv("MTG_CHAT_ENABLE_CLARIFICATION", "true"),
+                default=True,
+            )
+        max_clarification_turns = _bounded_int(
+            payload.get("max_clarification_turns", os.getenv("MTG_CHAT_MAX_CLARIFICATION_TURNS", "1")),
+            default=1,
+            minimum=0,
+            maximum=3,
+        )
 
         started = time.perf_counter()
         trace_id = f"trace-{uuid.uuid4().hex[:12]}"
@@ -210,12 +292,36 @@ class ChatBackendService:
                 "latency_ms": latency_ms,
                 "trace_id": trace_id,
                 "model_used": self.llm_runtime.model_for_reporting(),
+                "needs_clarification": False,
+                "clarifying_question": "",
                 "safety_verdict": pre_safety.to_dict(),
             }
 
         index = self.retriever_client.get_index()
         retrieved = index.search(question, top_k=top_k)
         evidence = [item.to_dict() for item in retrieved]
+
+        clarification_turns_used = sum(
+            1
+            for item in history
+            if item.get("role") == "assistant"
+            and str(item.get("content", "")).strip().lower().startswith("quick clarification:")
+        )
+
+        if enable_clarification and clarification_turns_used < max_clarification_turns:
+            if _likely_ambiguous_question(question=question, retrieved=retrieved, history=history):
+                clarifying_question = _build_clarifying_question(question)
+                latency_ms = int(round((time.perf_counter() - started) * 1000))
+                return {
+                    "answer": clarifying_question,
+                    "evidence": [],
+                    "latency_ms": latency_ms,
+                    "trace_id": trace_id,
+                    "model_used": self.llm_runtime.model_for_reporting(),
+                    "needs_clarification": True,
+                    "clarifying_question": clarifying_question,
+                    "safety_verdict": pre_safety.to_dict(),
+                }
 
         if not retrieved:
             answer = (
@@ -245,5 +351,7 @@ class ChatBackendService:
             "latency_ms": latency_ms,
             "trace_id": trace_id,
             "model_used": self.llm_runtime.model_for_reporting(),
+            "needs_clarification": False,
+            "clarifying_question": "",
             "safety_verdict": merged_safety.to_dict(),
         }

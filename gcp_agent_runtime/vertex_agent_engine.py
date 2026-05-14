@@ -28,6 +28,15 @@ class VertexAgentEngineClient:
         self.config = config or VertexAgentEngineConfig.from_env()
 
     def recommend(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return self._invoke_operation(operation="deck_recommendation", payload=payload)
+
+    def run_research(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return self._invoke_operation(operation="research_run", payload=payload)
+
+    def run_chat(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return self._invoke_operation(operation="chat_respond", payload=payload)
+
+    def _invoke_operation(self, operation: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         if not self.config.resource_name:
             raise ValueError("MTG_VERTEX_AGENT_ENGINE_RESOURCE is required for vertex backend mode.")
 
@@ -48,7 +57,22 @@ class VertexAgentEngineClient:
             vertexai.init(**init_kwargs)
 
         remote = agent_engines.get(self.config.resource_name)
-        raw = self._invoke_remote(remote=remote, payload=payload)
+        envelopes = [
+            {"operation": operation, "payload": dict(payload)},
+            dict(payload, _operation=operation),
+            dict(payload),
+        ]
+        last_error: Exception | None = None
+        raw = None
+        for envelope in envelopes:
+            try:
+                raw = self._invoke_remote(remote=remote, payload=envelope)
+                break
+            except Exception as exc:
+                last_error = exc
+                continue
+        if raw is None and last_error is not None:
+            raise last_error
         normalized = self._normalize_response(raw)
         if not isinstance(normalized, dict):
             raise RuntimeError("Vertex Agent Engine response could not be converted to JSON object.")

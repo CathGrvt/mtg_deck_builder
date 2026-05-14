@@ -21,6 +21,8 @@ def _bool_env(name: str, default: bool) -> bool:
 class AdapterSettings:
     backend_mode: str = "local"
     vertex_fallback_to_local: bool = True
+    vertex_proxy_research: bool = False
+    vertex_proxy_chat: bool = False
 
     @classmethod
     def from_env(cls) -> "AdapterSettings":
@@ -30,6 +32,8 @@ class AdapterSettings:
         return cls(
             backend_mode=mode,
             vertex_fallback_to_local=_bool_env("MTG_VERTEX_FALLBACK_TO_LOCAL", True),
+            vertex_proxy_research=_bool_env("MTG_VERTEX_PROXY_RESEARCH", False),
+            vertex_proxy_chat=_bool_env("MTG_VERTEX_PROXY_CHAT", False),
         )
 
 
@@ -79,9 +83,21 @@ class CloudRunAgentAdapter:
         return self.handle_recommendation(payload)
 
     def handle_research(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if self.settings.backend_mode == "vertex" and self.settings.vertex_proxy_research:
+            try:
+                return self.vertex_client.run_research(dict(payload))
+            except Exception:
+                if not self.settings.vertex_fallback_to_local:
+                    raise
         return self.research_service.run(dict(payload))
 
     def handle_chat(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if self.settings.backend_mode == "vertex" and self.settings.vertex_proxy_chat:
+            try:
+                return self.vertex_client.run_chat(dict(payload))
+            except Exception:
+                if not self.settings.vertex_fallback_to_local:
+                    raise
         return self.chat_service.run(dict(payload))
 
 

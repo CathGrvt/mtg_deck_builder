@@ -2,6 +2,9 @@
 
 This folder contains operational templates for enterprise rollout.
 
+Terraform bootstrap is available in `infra/terraform/` for setting up
+deployment prerequisites (WIF, service accounts, Artifact Registry, staging bucket).
+
 ## Suggested IAM Principle
 
 Use dedicated service accounts:
@@ -40,6 +43,8 @@ Required repository secrets:
 - `GCP_SERVICE_ACCOUNT`
 
 This workflow is `workflow_dispatch` only by default (manual trigger), so production deploys stay explicit and auditable.
+
+The workflow also supports a secrets-only setup path (vars optional) after Terraform bootstrap.
 
 ## Policy Templates
 

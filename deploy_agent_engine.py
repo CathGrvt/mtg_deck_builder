@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from typing import List
 
 from gcp_agent_runtime.adk_app import build_agent_engine_app
@@ -40,6 +41,35 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _collect_agent_runtime_env() -> dict:
+    keys = [
+        "OPENAI_API_KEY",
+        "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_CLOUD_LOCATION",
+        "MTG_LLM_PROVIDER",
+        "MTG_OPENAI_MODEL",
+        "MTG_OPENAI_API_KEY_ENV",
+        "MTG_OPENAI_BASE_URL",
+        "MTG_VERTEX_MODEL",
+        "MTG_LLM_TIMEOUT_SEC",
+        "MTG_CHAT_ENABLE_CLARIFICATION",
+        "MTG_CHAT_MAX_CLARIFICATION_TURNS",
+        "MTG_RAG_CORPUS_URI",
+        "MTG_LOCAL_RETRIEVER_CARDS_CSV",
+        "MTG_LOCAL_RETRIEVER_DECKS_DIR",
+        "MTG_LOCAL_RETRIEVER_META_JSON_PATHS",
+        "MTG_LOCAL_RETRIEVER_ENABLE_SEMANTIC",
+        "MTG_LOCAL_RETRIEVER_LEXICAL_WEIGHT",
+        "MTG_LOCAL_RETRIEVER_SEMANTIC_WEIGHT",
+    ]
+    result = {}
+    for key in keys:
+        value = os.getenv(key, "")
+        if str(value).strip():
+            result[key] = str(value)
+    return result
+
+
 def deploy(
     project: str,
     location: str,
@@ -63,6 +93,7 @@ def deploy(
             enable_langsmith_fanout=langsmith_fanout,
         )
     )
+    env_vars.update(_collect_agent_runtime_env())
     payload = {
         "project": project,
         "location": location,

@@ -85,8 +85,17 @@ Backend mode selection is env-driven:
 - `MTG_BACKEND_MODE=local` (default): run deck recommendations through local coordinator.
 - `MTG_BACKEND_MODE=vertex`: proxy deck recommendations to Vertex Agent Engine.
 - `MTG_VERTEX_FALLBACK_TO_LOCAL=true`: fallback to local coordinator if Vertex invocation fails.
+- `MTG_VERTEX_PROXY_RESEARCH=true`: also proxy `/v1/research/run` through Agent Engine.
+- `MTG_VERTEX_PROXY_CHAT=true`: also proxy `/v1/chat/respond` through Agent Engine.
 
-Research/chat endpoints (`/v1/research/run`, `/v1/chat/respond`) always run backend-local logic.
+If the proxy toggles above are `false`, research/chat run backend-local logic.
+
+Chat supports clarification mode:
+
+- `MTG_CHAT_ENABLE_CLARIFICATION=true`
+- `MTG_CHAT_MAX_CLARIFICATION_TURNS=1`
+
+To compare Gemini vs OpenAI for research/chat in proxied mode, set provider env vars for deployment (`MTG_LLM_PROVIDER`, `MTG_OPENAI_MODEL`, `MTG_VERTEX_MODEL`, optional `OPENAI_API_KEY`).
 
 ## Deploy Backend Adapter (Cloud Run)
 
@@ -115,6 +124,10 @@ It uses OIDC auth and supports:
 - Optional Agent Engine deploy
 
 Configure repository settings first.
+
+For IaC bootstrap of these prerequisites, use Terraform in `infra/terraform/`.
+
+The workflow supports secrets-only setup and forwards key runtime env vars to Agent Engine deployment so provider comparisons can be performed without local redeploy.
 
 Repository variables:
 

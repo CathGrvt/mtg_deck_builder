@@ -33,12 +33,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      REGION: ${{ vars.GCP_REGION || 'us-central1' }}
-      ARTIFACT_REPO: ${{ vars.GCP_ARTIFACT_REPO || 'mtg' }}
-      STAGING_BUCKET: ${{ vars.GCP_STAGING_BUCKET }}
-      BACKEND_SERVICE: ${{ vars.GCP_BACKEND_SERVICE || 'mtg-backend' }}
-      UI_SERVICE: ${{ vars.GCP_UI_SERVICE || 'mtg-ui' }}
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID || secrets.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION || secrets.GCP_REGION || 'us-central1' }}
+      ARTIFACT_REPO: ${{ vars.GCP_ARTIFACT_REPO || secrets.GCP_ARTIFACT_REPO || 'mtg' }}
+      STAGING_BUCKET: ${{ vars.GCP_STAGING_BUCKET || secrets.GCP_STAGING_BUCKET }}
+      BACKEND_SERVICE: ${{ vars.GCP_BACKEND_SERVICE || secrets.GCP_BACKEND_SERVICE || 'mtg-backend' }}
+      UI_SERVICE: ${{ vars.GCP_UI_SERVICE || secrets.GCP_UI_SERVICE || 'mtg-ui' }}
+      MTG_BACKEND_MODE: ${{ vars.MTG_BACKEND_MODE || secrets.MTG_BACKEND_MODE || 'local' }}
+      MTG_LLM_PROVIDER: ${{ vars.MTG_LLM_PROVIDER || secrets.MTG_LLM_PROVIDER || 'openai' }}
+      MTG_OPENAI_MODEL: ${{ vars.MTG_OPENAI_MODEL || secrets.MTG_OPENAI_MODEL || 'gpt-4o-mini' }}
+      MTG_VERTEX_MODEL: ${{ vars.MTG_VERTEX_MODEL || secrets.MTG_VERTEX_MODEL || 'gemini-2.5-flash' }}
+      MTG_LLM_TIMEOUT_SEC: ${{ vars.MTG_LLM_TIMEOUT_SEC || secrets.MTG_LLM_TIMEOUT_SEC || '45' }}
+      MTG_VERTEX_PROXY_RESEARCH: ${{ vars.MTG_VERTEX_PROXY_RESEARCH || secrets.MTG_VERTEX_PROXY_RESEARCH || 'false' }}
+      MTG_VERTEX_PROXY_CHAT: ${{ vars.MTG_VERTEX_PROXY_CHAT || secrets.MTG_VERTEX_PROXY_CHAT || 'false' }}
+      MTG_VERTEX_FALLBACK_TO_LOCAL: ${{ vars.MTG_VERTEX_FALLBACK_TO_LOCAL || secrets.MTG_VERTEX_FALLBACK_TO_LOCAL || 'true' }}
+      MTG_VERTEX_AGENT_ENGINE_RESOURCE: ${{ vars.MTG_VERTEX_AGENT_ENGINE_RESOURCE || secrets.MTG_VERTEX_AGENT_ENGINE_RESOURCE || '' }}
+      MTG_CHAT_ENABLE_CLARIFICATION: ${{ vars.MTG_CHAT_ENABLE_CLARIFICATION || secrets.MTG_CHAT_ENABLE_CLARIFICATION || 'true' }}
+      MTG_CHAT_MAX_CLARIFICATION_TURNS: ${{ vars.MTG_CHAT_MAX_CLARIFICATION_TURNS || secrets.MTG_CHAT_MAX_CLARIFICATION_TURNS || '1' }}
+      GOOGLE_CLOUD_PROJECT: ${{ vars.GOOGLE_CLOUD_PROJECT || secrets.GOOGLE_CLOUD_PROJECT || vars.GCP_PROJECT_ID || secrets.GCP_PROJECT_ID }}
+      GOOGLE_CLOUD_LOCATION: ${{ vars.GOOGLE_CLOUD_LOCATION || secrets.GOOGLE_CLOUD_LOCATION || vars.GCP_REGION || secrets.GCP_REGION || 'us-central1' }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || '' }}
 
     steps:
       - name: Checkout
@@ -82,7 +96,7 @@ jobs:
             --region "${REGION}" \
             --image "${BACKEND_IMAGE}" \
             --allow-unauthenticated \
-            --set-env-vars "PORT=8080"
+            --set-env-vars "PORT=8080,MTG_BACKEND_MODE=${MTG_BACKEND_MODE},MTG_LLM_PROVIDER=${MTG_LLM_PROVIDER},MTG_OPENAI_MODEL=${MTG_OPENAI_MODEL},MTG_VERTEX_MODEL=${MTG_VERTEX_MODEL},MTG_LLM_TIMEOUT_SEC=${MTG_LLM_TIMEOUT_SEC},MTG_VERTEX_PROXY_RESEARCH=${MTG_VERTEX_PROXY_RESEARCH},MTG_VERTEX_PROXY_CHAT=${MTG_VERTEX_PROXY_CHAT},MTG_VERTEX_FALLBACK_TO_LOCAL=${MTG_VERTEX_FALLBACK_TO_LOCAL},MTG_VERTEX_AGENT_ENGINE_RESOURCE=${MTG_VERTEX_AGENT_ENGINE_RESOURCE},MTG_CHAT_ENABLE_CLARIFICATION=${MTG_CHAT_ENABLE_CLARIFICATION},MTG_CHAT_MAX_CLARIFICATION_TURNS=${MTG_CHAT_MAX_CLARIFICATION_TURNS}"
 
       - name: Build and deploy Streamlit UI
         if: ${{ inputs.deploy_ui }}
@@ -90,6 +104,8 @@ jobs:
           UI_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/mtg-ui:${GITHUB_SHA}"
           BACKEND_URL="$(gcloud run services describe "${BACKEND_SERVICE}" --region "${REGION}" --format='value(status.url)')"
           BACKEND_ENDPOINT="${BACKEND_URL}/v1/deck/recommend"
+          RESEARCH_ENDPOINT="${BACKEND_URL}/v1/research/run"
+          CHAT_ENDPOINT="${BACKEND_URL}/v1/chat/respond"
 
           gcloud builds submit \
             --tag "${UI_IMAGE}" \
@@ -100,7 +116,7 @@ jobs:
             --region "${REGION}" \
             --image "${UI_IMAGE}" \
             --allow-unauthenticated \
-            --set-env-vars "MTG_GCP_BACKEND_URL=${BACKEND_ENDPOINT}"
+            --set-env-vars "MTG_GCP_BACKEND_URL=${BACKEND_ENDPOINT},MTG_GCP_RESEARCH_URL=${RESEARCH_ENDPOINT},MTG_GCP_CHAT_URL=${CHAT_ENDPOINT}"
 
       - name: Setup Python for Agent Engine deployment
         if: ${{ inputs.deploy_agent_engine }}

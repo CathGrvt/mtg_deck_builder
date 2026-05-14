@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from gcp_agent_runtime.adapter import CloudRunAgentAdapter
+from gcp_agent_runtime.adapter import AdapterSettings, CloudRunAgentAdapter
 from gcp_agent_runtime.coordinator import RootCoordinatorAgent
 from gcp_agent_runtime.model_routing import ModelRoutingConfig
 
@@ -30,7 +30,16 @@ def build_adk_root_agent(
     del routing_config  # coordinator already owns routing; kept for explicit API stability.
     LlmAgent, FunctionTool = _import_adk()
     resolved = coordinator or RootCoordinatorAgent()
-    adapter = CloudRunAgentAdapter(coordinator=resolved)
+    # Force local execution inside Agent Engine tool handlers to avoid recursive proxy loops.
+    adapter = CloudRunAgentAdapter(
+        coordinator=resolved,
+        settings=AdapterSettings(
+            backend_mode="local",
+            vertex_fallback_to_local=True,
+            vertex_proxy_research=False,
+            vertex_proxy_chat=False,
+        ),
+    )
 
     def run_deck_recommendation(
         session_id: str,
@@ -54,7 +63,45 @@ def build_adk_root_agent(
         }
         return adapter.handle_request(payload)
 
+    def run_research(
+        session_id: str,
+        topic: str,
+        max_iterations: int = 3,
+        max_questions: int = 5,
+        top_k_per_query: int = 5,
+        enable_semantic: bool = True,
+        use_langgraph: bool = True,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "session_id": session_id,
+            "topic": topic,
+            "max_iterations": int(max_iterations),
+            "max_questions": int(max_questions),
+            "top_k_per_query": int(top_k_per_query),
+            "enable_semantic": bool(enable_semantic),
+            "use_langgraph": bool(use_langgraph),
+        }
+        return adapter.handle_research(payload)
+
+    def run_chat_response(
+        session_id: str,
+        question: str,
+        history: list[dict[str, str]] | None = None,
+        top_k: int = 6,
+        enable_clarification: bool = True,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "session_id": session_id,
+            "question": question,
+            "history": list(history or []),
+            "top_k": int(top_k),
+            "enable_clarification": bool(enable_clarification),
+        }
+        return adapter.handle_chat(payload)
+
     recommendation_tool = FunctionTool(run_deck_recommendation)
+    research_tool = FunctionTool(run_research)
+    chat_tool = FunctionTool(run_chat_response)
 
     query_rewrite_agent = LlmAgent(
         name="QueryRewriteAgent",
@@ -114,12 +161,16 @@ def build_adk_root_agent(
     root = LlmAgent(
         name="RootCoordinatorAgent",
         model="gemini-2.5-flash",
-        description="Routes deck recommendation requests through query rewrite, retrieval, rerank, critique, and planning.",
+        description=(
+            "Routes deck recommendation, research, and chat requests through specialized tool paths."
+        ),
         instruction=(
-            "Coordinate specialized subagents and call run_deck_recommendation for final payload generation. "
+            "Coordinate specialized subagents and call the matching tool: "
+            "run_deck_recommendation for deck outputs, run_research for structured research reports, "
+            "and run_chat_response for conversational answers. "
             "Escalate complex reasoning to gemini-2.5-pro only when constraints are conflicting or confidence is low."
         ),
-        tools=[recommendation_tool],
+        tools=[recommendation_tool, research_tool, chat_tool],
         sub_agents=[
             query_rewrite_agent,
             retriever_agent,

@@ -29,6 +29,8 @@ class StubVertexClient:
         self.result = result or {"summary": "vertex", "recommended_decklist": ["Island"]}
         self.error = error
         self.calls = 0
+        self.research_calls = 0
+        self.chat_calls = 0
 
     def recommend(self, payload):
         del payload
@@ -36,6 +38,33 @@ class StubVertexClient:
         if self.error is not None:
             raise self.error
         return dict(self.result)
+
+    def run_research(self, payload):
+        del payload
+        self.research_calls += 1
+        if self.error is not None:
+            raise self.error
+        return {
+            "report": {"topic": "remote", "summary": "vertex research", "claims": [], "open_questions": [], "validation": {}},
+            "validation": {},
+            "latency_ms": 9,
+            "trace_id": "trace-vr",
+            "model_used": "gemini-2.5-flash",
+            "corpus_stats": {"chunks": 3, "sources": 2},
+        }
+
+    def run_chat(self, payload):
+        del payload
+        self.chat_calls += 1
+        if self.error is not None:
+            raise self.error
+        return {
+            "answer": "vertex chat",
+            "evidence": [],
+            "latency_ms": 8,
+            "trace_id": "trace-vc",
+            "model_used": "gemini-2.5-flash",
+        }
 
 
 class StubResearchService:
@@ -159,6 +188,44 @@ class AdapterModeTests(unittest.TestCase):
         self.assertIn("latency_ms", chat)
         self.assertIn("trace_id", chat)
         self.assertIn("model_used", chat)
+
+    def test_vertex_proxy_research_and_chat_when_enabled(self):
+        vertex = StubVertexClient()
+        adapter = CloudRunAgentAdapter(
+            coordinator=StubCoordinator(),
+            settings=AdapterSettings(
+                backend_mode="vertex",
+                vertex_fallback_to_local=True,
+                vertex_proxy_research=True,
+                vertex_proxy_chat=True,
+            ),
+            vertex_client=vertex,
+            research_service=StubResearchService(),
+            chat_service=StubChatService(),
+        )
+
+        research = adapter.handle_research({"session_id": "s1", "topic": "topic"})
+        chat = adapter.handle_chat({"session_id": "s1", "question": "question"})
+        self.assertEqual(research["report"]["summary"], "vertex research")
+        self.assertEqual(chat["answer"], "vertex chat")
+        self.assertEqual(vertex.research_calls, 1)
+        self.assertEqual(vertex.chat_calls, 1)
+
+    def test_vertex_proxy_research_fallbacks_to_local_on_error(self):
+        adapter = CloudRunAgentAdapter(
+            coordinator=StubCoordinator(),
+            settings=AdapterSettings(
+                backend_mode="vertex",
+                vertex_fallback_to_local=True,
+                vertex_proxy_research=True,
+                vertex_proxy_chat=False,
+            ),
+            vertex_client=StubVertexClient(error=RuntimeError("vertex failure")),
+            research_service=StubResearchService(),
+            chat_service=StubChatService(),
+        )
+        research = adapter.handle_research({"session_id": "s1", "topic": "topic"})
+        self.assertEqual(research["report"]["summary"], "ok")
 
 
 if __name__ == "__main__":
