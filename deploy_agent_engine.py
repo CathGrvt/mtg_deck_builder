@@ -43,17 +43,20 @@ def parse_args() -> argparse.Namespace:
 
 def _collect_agent_runtime_env() -> dict:
     keys = [
-        "OPENAI_API_KEY",
         "GOOGLE_CLOUD_PROJECT",
         "GOOGLE_CLOUD_LOCATION",
         "MTG_LLM_PROVIDER",
         "MTG_OPENAI_MODEL",
         "MTG_OPENAI_API_KEY_ENV",
+        "MTG_OPENAI_API_KEY_SECRET_RESOURCE",
+        "MTG_OPENAI_API_KEY_SECRET",
         "MTG_OPENAI_BASE_URL",
         "MTG_VERTEX_MODEL",
         "MTG_LLM_TIMEOUT_SEC",
         "MTG_CHAT_ENABLE_CLARIFICATION",
         "MTG_CHAT_MAX_CLARIFICATION_TURNS",
+        "LANGSMITH_API_KEY_SECRET_RESOURCE",
+        "LANGSMITH_API_KEY_SECRET",
         "MTG_RAG_CORPUS_URI",
         "MTG_LOCAL_RETRIEVER_CARDS_CSV",
         "MTG_LOCAL_RETRIEVER_DECKS_DIR",

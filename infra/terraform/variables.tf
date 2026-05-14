@@ -59,3 +59,21 @@ variable "ui_runtime_service_account_id" {
   type        = string
   default     = "mtg-ui-sa"
 }
+
+variable "openai_api_key_secret_id" {
+  description = "Secret Manager secret ID for OpenAI API key."
+  type        = string
+  default     = "mtg-openai-api-key"
+}
+
+variable "langsmith_api_key_secret_id" {
+  description = "Secret Manager secret ID for LangSmith API key."
+  type        = string
+  default     = "mtg-langsmith-api-key"
+}
+
+variable "agent_runtime_service_account_email" {
+  description = "Optional Agent Engine runtime service account email for secret access."
+  type        = string
+  default     = ""
+}

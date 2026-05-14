@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Sequence
 import requests
 
 from research_pipeline.models import Citation, Claim, RetrievedChunk, StructuredReport
+from research_pipeline.secret_resolver import resolve_openai_api_key
 
 
 def _extract_json_object(text: str) -> Dict[str, Any]:
@@ -286,7 +287,7 @@ class OpenAIChatLLM(AgentLLM):
         self.fallback = fallback or RuleBasedLLM()
 
     def _chat_json(self, system_prompt: str, user_payload: Dict[str, Any]) -> Dict[str, Any]:
-        api_key = os.getenv(self.api_key_env, "")
+        api_key = resolve_openai_api_key(api_key_env=self.api_key_env)
         if not api_key:
             raise ValueError(
                 f"Environment variable '{self.api_key_env}' is not set."
@@ -555,7 +556,7 @@ def build_default_llm(
             )
         return RuleBasedLLM()
 
-    if os.getenv(api_key_env, ""):
+    if resolve_openai_api_key(api_key_env=api_key_env):
         return OpenAIChatLLM(
             model=model,
             api_key_env=api_key_env,

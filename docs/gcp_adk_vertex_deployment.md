@@ -95,7 +95,7 @@ Chat supports clarification mode:
 - `MTG_CHAT_ENABLE_CLARIFICATION=true`
 - `MTG_CHAT_MAX_CLARIFICATION_TURNS=1`
 
-To compare Gemini vs OpenAI for research/chat in proxied mode, set provider env vars for deployment (`MTG_LLM_PROVIDER`, `MTG_OPENAI_MODEL`, `MTG_VERTEX_MODEL`, optional `OPENAI_API_KEY`).
+To compare Gemini vs OpenAI for research/chat in proxied mode, set provider env vars for deployment (`MTG_LLM_PROVIDER`, `MTG_OPENAI_MODEL`, `MTG_VERTEX_MODEL`) and provide `MTG_OPENAI_API_KEY_SECRET_RESOURCE` pointing to Secret Manager.
 
 ## Deploy Backend Adapter (Cloud Run)
 
@@ -127,7 +127,7 @@ Configure repository settings first.
 
 For IaC bootstrap of these prerequisites, use Terraform in `infra/terraform/`.
 
-The workflow supports secrets-only setup and forwards key runtime env vars to Agent Engine deployment so provider comparisons can be performed without local redeploy.
+The workflow supports secrets-only setup and forwards key runtime env vars to Agent Engine deployment so provider comparisons can be performed without local redeploy; API keys should be resolved from Secret Manager instead of raw workflow env values.
 
 Repository variables:
 
@@ -137,6 +137,9 @@ Repository variables:
 - `GCP_STAGING_BUCKET` (bucket name only, no `gs://`)
 - `GCP_BACKEND_SERVICE` (default: `mtg-backend`)
 - `GCP_UI_SERVICE` (default: `mtg-ui`)
+- `GCP_BACKEND_RUNTIME_SERVICE_ACCOUNT` (recommended)
+- `GCP_UI_RUNTIME_SERVICE_ACCOUNT` (recommended)
+- `MTG_OPENAI_API_KEY_SECRET_RESOURCE` (`projects/<project>/secrets/<name>`)
 
 Repository secrets:
 

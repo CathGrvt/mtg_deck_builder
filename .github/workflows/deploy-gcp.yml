@@ -39,9 +39,12 @@ jobs:
       STAGING_BUCKET: ${{ vars.GCP_STAGING_BUCKET || secrets.GCP_STAGING_BUCKET }}
       BACKEND_SERVICE: ${{ vars.GCP_BACKEND_SERVICE || secrets.GCP_BACKEND_SERVICE || 'mtg-backend' }}
       UI_SERVICE: ${{ vars.GCP_UI_SERVICE || secrets.GCP_UI_SERVICE || 'mtg-ui' }}
+      BACKEND_RUNTIME_SERVICE_ACCOUNT: ${{ vars.GCP_BACKEND_RUNTIME_SERVICE_ACCOUNT || secrets.GCP_BACKEND_RUNTIME_SERVICE_ACCOUNT || '' }}
+      UI_RUNTIME_SERVICE_ACCOUNT: ${{ vars.GCP_UI_RUNTIME_SERVICE_ACCOUNT || secrets.GCP_UI_RUNTIME_SERVICE_ACCOUNT || '' }}
       MTG_BACKEND_MODE: ${{ vars.MTG_BACKEND_MODE || secrets.MTG_BACKEND_MODE || 'local' }}
       MTG_LLM_PROVIDER: ${{ vars.MTG_LLM_PROVIDER || secrets.MTG_LLM_PROVIDER || 'openai' }}
       MTG_OPENAI_MODEL: ${{ vars.MTG_OPENAI_MODEL || secrets.MTG_OPENAI_MODEL || 'gpt-4o-mini' }}
+      MTG_OPENAI_API_KEY_SECRET_RESOURCE: ${{ vars.MTG_OPENAI_API_KEY_SECRET_RESOURCE || secrets.MTG_OPENAI_API_KEY_SECRET_RESOURCE || '' }}
       MTG_VERTEX_MODEL: ${{ vars.MTG_VERTEX_MODEL || secrets.MTG_VERTEX_MODEL || 'gemini-2.5-flash' }}
       MTG_LLM_TIMEOUT_SEC: ${{ vars.MTG_LLM_TIMEOUT_SEC || secrets.MTG_LLM_TIMEOUT_SEC || '45' }}
       MTG_VERTEX_PROXY_RESEARCH: ${{ vars.MTG_VERTEX_PROXY_RESEARCH || secrets.MTG_VERTEX_PROXY_RESEARCH || 'false' }}
@@ -52,7 +55,6 @@ jobs:
       MTG_CHAT_MAX_CLARIFICATION_TURNS: ${{ vars.MTG_CHAT_MAX_CLARIFICATION_TURNS || secrets.MTG_CHAT_MAX_CLARIFICATION_TURNS || '1' }}
       GOOGLE_CLOUD_PROJECT: ${{ vars.GOOGLE_CLOUD_PROJECT || secrets.GOOGLE_CLOUD_PROJECT || vars.GCP_PROJECT_ID || secrets.GCP_PROJECT_ID }}
       GOOGLE_CLOUD_LOCATION: ${{ vars.GOOGLE_CLOUD_LOCATION || secrets.GOOGLE_CLOUD_LOCATION || vars.GCP_REGION || secrets.GCP_REGION || 'us-central1' }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || '' }}
 
     steps:
       - name: Checkout
@@ -87,6 +89,10 @@ jobs:
         if: ${{ inputs.deploy_backend }}
         run: |
           BACKEND_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/mtg-backend:${GITHUB_SHA}"
+          BACKEND_SA_ARG=()
+          if [ -n "${BACKEND_RUNTIME_SERVICE_ACCOUNT}" ]; then
+            BACKEND_SA_ARG=(--service-account "${BACKEND_RUNTIME_SERVICE_ACCOUNT}")
+          fi
           gcloud builds submit \
             --tag "${BACKEND_IMAGE}" \
             -f Dockerfile.backend \
@@ -96,12 +102,17 @@ jobs:
             --region "${REGION}" \
             --image "${BACKEND_IMAGE}" \
             --allow-unauthenticated \
-            --set-env-vars "PORT=8080,MTG_BACKEND_MODE=${MTG_BACKEND_MODE},MTG_LLM_PROVIDER=${MTG_LLM_PROVIDER},MTG_OPENAI_MODEL=${MTG_OPENAI_MODEL},MTG_VERTEX_MODEL=${MTG_VERTEX_MODEL},MTG_LLM_TIMEOUT_SEC=${MTG_LLM_TIMEOUT_SEC},MTG_VERTEX_PROXY_RESEARCH=${MTG_VERTEX_PROXY_RESEARCH},MTG_VERTEX_PROXY_CHAT=${MTG_VERTEX_PROXY_CHAT},MTG_VERTEX_FALLBACK_TO_LOCAL=${MTG_VERTEX_FALLBACK_TO_LOCAL},MTG_VERTEX_AGENT_ENGINE_RESOURCE=${MTG_VERTEX_AGENT_ENGINE_RESOURCE},MTG_CHAT_ENABLE_CLARIFICATION=${MTG_CHAT_ENABLE_CLARIFICATION},MTG_CHAT_MAX_CLARIFICATION_TURNS=${MTG_CHAT_MAX_CLARIFICATION_TURNS}"
+            "${BACKEND_SA_ARG[@]}" \
+            --set-env-vars "PORT=8080,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=${REGION},MTG_BACKEND_MODE=${MTG_BACKEND_MODE},MTG_LLM_PROVIDER=${MTG_LLM_PROVIDER},MTG_OPENAI_MODEL=${MTG_OPENAI_MODEL},MTG_OPENAI_API_KEY_SECRET_RESOURCE=${MTG_OPENAI_API_KEY_SECRET_RESOURCE},MTG_VERTEX_MODEL=${MTG_VERTEX_MODEL},MTG_LLM_TIMEOUT_SEC=${MTG_LLM_TIMEOUT_SEC},MTG_VERTEX_PROXY_RESEARCH=${MTG_VERTEX_PROXY_RESEARCH},MTG_VERTEX_PROXY_CHAT=${MTG_VERTEX_PROXY_CHAT},MTG_VERTEX_FALLBACK_TO_LOCAL=${MTG_VERTEX_FALLBACK_TO_LOCAL},MTG_VERTEX_AGENT_ENGINE_RESOURCE=${MTG_VERTEX_AGENT_ENGINE_RESOURCE},MTG_CHAT_ENABLE_CLARIFICATION=${MTG_CHAT_ENABLE_CLARIFICATION},MTG_CHAT_MAX_CLARIFICATION_TURNS=${MTG_CHAT_MAX_CLARIFICATION_TURNS}"
 
       - name: Build and deploy Streamlit UI
         if: ${{ inputs.deploy_ui }}
         run: |
           UI_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/mtg-ui:${GITHUB_SHA}"
+          UI_SA_ARG=()
+          if [ -n "${UI_RUNTIME_SERVICE_ACCOUNT}" ]; then
+            UI_SA_ARG=(--service-account "${UI_RUNTIME_SERVICE_ACCOUNT}")
+          fi
           BACKEND_URL="$(gcloud run services describe "${BACKEND_SERVICE}" --region "${REGION}" --format='value(status.url)')"
           BACKEND_ENDPOINT="${BACKEND_URL}/v1/deck/recommend"
           RESEARCH_ENDPOINT="${BACKEND_URL}/v1/research/run"
@@ -116,6 +127,7 @@ jobs:
             --region "${REGION}" \
             --image "${UI_IMAGE}" \
             --allow-unauthenticated \
+            "${UI_SA_ARG[@]}" \
             --set-env-vars "MTG_GCP_BACKEND_URL=${BACKEND_ENDPOINT},MTG_GCP_RESEARCH_URL=${RESEARCH_ENDPOINT},MTG_GCP_CHAT_URL=${CHAT_ENDPOINT}"
 
       - name: Setup Python for Agent Engine deployment

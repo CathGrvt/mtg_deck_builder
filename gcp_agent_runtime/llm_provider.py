@@ -9,6 +9,7 @@ import requests
 
 from research_pipeline.llm import AgentLLM, RuleBasedLLM, build_default_llm
 from research_pipeline.models import RetrievedChunk
+from research_pipeline.secret_resolver import resolve_openai_api_key
 
 
 @dataclass
@@ -121,7 +122,7 @@ class LLMProviderRuntime:
         return None
 
     def _chat_openai(self, messages: Sequence[Dict[str, str]], temperature: float) -> str:
-        api_key = os.getenv(self.config.openai_api_key_env, "")
+        api_key = resolve_openai_api_key(api_key_env=self.config.openai_api_key_env)
         if not api_key:
             raise ValueError(f"Environment variable '{self.config.openai_api_key_env}' is not set.")
 

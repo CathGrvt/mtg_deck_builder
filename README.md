@@ -181,6 +181,7 @@ This repo now includes a deployable GCP runtime package under `gcp_agent_runtime
 - Env-selectable backend mode (`MTG_BACKEND_MODE=local|vertex`) with optional local fallback (`MTG_VERTEX_FALLBACK_TO_LOCAL=true`)
 - Optional Vertex proxy for research/chat (`MTG_VERTEX_PROXY_RESEARCH=true`, `MTG_VERTEX_PROXY_CHAT=true`)
 - Env-selectable research/chat LLM provider (`MTG_LLM_PROVIDER=openai|vertex|rule`)
+- Optional Secret Manager key resolution (`MTG_OPENAI_API_KEY_SECRET_RESOURCE=projects/.../secrets/...`)
 - Clarification-capable chat responses (`MTG_CHAT_ENABLE_CLARIFICATION=true`, `MTG_CHAT_MAX_CLARIFICATION_TURNS=1`)
 
 For deployment and governance details, see:
@@ -207,7 +208,7 @@ OPENAI_API_KEY=your_key_here docker compose up --build
 ```
 
 ### Infrastructure as Code (GCP Bootstrap)
-Deployment prerequisites can be provisioned with Terraform under `infra/terraform/` (Workload Identity Federation, service accounts, Artifact Registry, staging bucket). After `terraform apply`, you can use a secrets-only GitHub setup by adding the outputs as repository secrets and running `.github/workflows/deploy-gcp.yml`; the Agent Engine deploy path now forwards relevant `MTG_*` provider/runtime env vars (and optional `OPENAI_API_KEY`) into Agent Engine runtime env so proxied research/chat can be benchmarked against backend-local paths.
+Deployment prerequisites can be provisioned with Terraform under `infra/terraform/` (Workload Identity Federation, service accounts, Artifact Registry, staging bucket, Secret Manager secrets). After `terraform apply`, you can use a secrets-only GitHub setup by adding the outputs as repository secrets and running `.github/workflows/deploy-gcp.yml`; set `MTG_OPENAI_API_KEY_SECRET_RESOURCE` to the secret resource and add secret versions in GCP so runtime fetches API keys from Secret Manager instead of raw env values.
 
 ### Cost Per Deck Generation (Estimation)
 Estimated per-deck cost can be modeled as `token_cost + Cloud Run compute_cost`, where `token_cost = (input_tokens/1,000,000 * input_rate) + (output_tokens/1,000,000 * output_rate)` and `compute_cost = (vCPU_seconds * vCPU_rate) + (GiB_seconds * memory_rate)`; for example, with 2,000 input tokens + 800 output tokens on a model priced at `$0.15/M` input and `$0.60/M` output, and a Cloud Run request taking `2.4s` on `1 vCPU` + `0.5 GiB` at assumed rates `$0.000024/vCPU-s` and `$0.0000025/GiB-s`, the estimated total is about **$0.00081 per deck** (replace rates with your current region/model pricing).

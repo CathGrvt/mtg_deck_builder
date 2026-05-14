@@ -5,6 +5,7 @@ This Terraform stack bootstraps the minimum GCP resources needed by `.github/wor
 - required APIs
 - Artifact Registry Docker repository
 - staging bucket for Agent Engine packaging
+- Secret Manager secrets for API keys
 - GitHub OIDC Workload Identity Pool + Provider
 - deployer/runtime service accounts and IAM bindings
 
@@ -39,18 +40,39 @@ Optional (otherwise workflow defaults apply):
 
 - `GCP_BACKEND_SERVICE`
 - `GCP_UI_SERVICE`
+- `GCP_BACKEND_RUNTIME_SERVICE_ACCOUNT` (use `backend_runtime_service_account` output)
+- `GCP_UI_RUNTIME_SERVICE_ACCOUNT` (use `ui_runtime_service_account` output)
 - `MTG_BACKEND_MODE`
 - `MTG_LLM_PROVIDER`
 - `MTG_VERTEX_PROXY_RESEARCH`
 - `MTG_VERTEX_PROXY_CHAT`
 - `MTG_VERTEX_AGENT_ENGINE_RESOURCE`
+- `MTG_OPENAI_API_KEY_SECRET_RESOURCE` (use `openai_api_key_secret_resource` output)
 - `MTG_OPENAI_MODEL`
 - `MTG_VERTEX_MODEL`
 - `MTG_LLM_TIMEOUT_SEC`
 - `MTG_CHAT_MAX_CLARIFICATION_TURNS`
-- `OPENAI_API_KEY` (only if testing OpenAI provider in deployed backend/Agent Engine)
 
 The GitHub workflow now accepts values from `vars` or `secrets`; if variables are absent, secrets are used.
+
+## Add Secret Versions (no secret values in Terraform state)
+
+Create secret versions after `terraform apply`:
+
+```bash
+OPENAI_SECRET_ID="$(terraform output -raw openai_api_key_secret_id)"
+printf '%s' "$OPENAI_API_KEY" | gcloud secrets versions add "${OPENAI_SECRET_ID}" --data-file=-
+```
+
+Optional LangSmith:
+
+```bash
+LANGSMITH_SECRET_RESOURCE="$(terraform output -raw langsmith_api_key_secret_resource)"
+LANGSMITH_SECRET_ID="${LANGSMITH_SECRET_RESOURCE##*/}"
+printf '%s' "$LANGSMITH_API_KEY" | gcloud secrets versions add "${LANGSMITH_SECRET_ID}" --data-file=-
+```
+
+If you deploy Agent Engine and want OpenAI provider there too, set `agent_runtime_service_account_email` in `terraform.tfvars` so Terraform grants `roles/secretmanager.secretAccessor` to that runtime identity.
 
 ## Notes
 

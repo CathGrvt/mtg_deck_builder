@@ -37,3 +37,18 @@ output "ui_runtime_service_account" {
   value       = google_service_account.ui_runtime.email
   description = "Recommended service account for Cloud Run UI runtime."
 }
+
+output "openai_api_key_secret_resource" {
+  value       = google_secret_manager_secret.openai_api_key.id
+  description = "Secret Manager resource for OpenAI key (use as MTG_OPENAI_API_KEY_SECRET_RESOURCE)."
+}
+
+output "openai_api_key_secret_id" {
+  value       = google_secret_manager_secret.openai_api_key.secret_id
+  description = "Secret Manager secret ID for OpenAI key."
+}
+
+output "langsmith_api_key_secret_resource" {
+  value       = google_secret_manager_secret.langsmith_api_key.id
+  description = "Secret Manager resource for LangSmith key."
+}

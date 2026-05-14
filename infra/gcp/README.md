@@ -36,6 +36,9 @@ Required repository variables:
 - `GCP_STAGING_BUCKET`
 - `GCP_BACKEND_SERVICE`
 - `GCP_UI_SERVICE`
+- `GCP_BACKEND_RUNTIME_SERVICE_ACCOUNT` (recommended from Terraform output)
+- `GCP_UI_RUNTIME_SERVICE_ACCOUNT` (recommended from Terraform output)
+- `MTG_OPENAI_API_KEY_SECRET_RESOURCE` (Secret Manager resource path)
 
 Required repository secrets:
 

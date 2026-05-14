@@ -24,6 +24,7 @@ locals {
     "sts.googleapis.com",
     "aiplatform.googleapis.com",
     "storage.googleapis.com",
+    "secretmanager.googleapis.com",
     "serviceusage.googleapis.com",
   ]
 
@@ -33,6 +34,7 @@ locals {
     "roles/artifactregistry.admin",
     "roles/storage.admin",
     "roles/aiplatform.admin",
+    "roles/secretmanager.admin",
     "roles/iam.serviceAccountUser",
     "roles/viewer",
   ]
@@ -102,6 +104,28 @@ resource "google_service_account" "ui_runtime" {
   display_name = "MTG UI Runtime"
 }
 
+resource "google_secret_manager_secret" "openai_api_key" {
+  project   = var.project_id
+  secret_id = var.openai_api_key_secret_id
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.required]
+}
+
+resource "google_secret_manager_secret" "langsmith_api_key" {
+  project   = var.project_id
+  secret_id = var.langsmith_api_key_secret_id
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.required]
+}
+
 resource "google_project_iam_member" "deployer_roles" {
   for_each = toset(local.deployer_roles)
   project  = var.project_id
@@ -121,6 +145,34 @@ resource "google_project_iam_member" "ui_runtime_roles" {
   project  = var.project_id
   role     = each.value
   member   = "serviceAccount:${google_service_account.ui_runtime.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "backend_runtime_openai_accessor" {
+  secret_id = google_secret_manager_secret.openai_api_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.backend_runtime.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "backend_runtime_langsmith_accessor" {
+  secret_id = google_secret_manager_secret.langsmith_api_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.backend_runtime.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "agent_runtime_openai_accessor" {
+  count = trimspace(var.agent_runtime_service_account_email) != "" ? 1 : 0
+
+  secret_id = google_secret_manager_secret.openai_api_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${trimspace(var.agent_runtime_service_account_email)}"
+}
+
+resource "google_secret_manager_secret_iam_member" "agent_runtime_langsmith_accessor" {
+  count = trimspace(var.agent_runtime_service_account_email) != "" ? 1 : 0
+
+  secret_id = google_secret_manager_secret.langsmith_api_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${trimspace(var.agent_runtime_service_account_email)}"
 }
 
 resource "google_iam_workload_identity_pool" "github" {
