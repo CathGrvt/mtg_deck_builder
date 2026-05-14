@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Protocol
 
 from gcp_agent_runtime.contracts import RetrievedEvidence, RetrievalBundle, RetrievalPlan
+from research_pipeline.io_resolver import resolve_uri_to_local_path
+from research_pipeline.models import DocumentChunk
 from research_pipeline.retrieval.corpus import build_domain_corpus
 from research_pipeline.retrieval.index import HybridRetrievalIndex
 
@@ -19,6 +22,7 @@ class LocalRetrieverConfig:
     cards_csv: str = "data/commander_cards.csv"
     decks_dir: str = "current_commander_decks"
     meta_json_paths: Optional[List[str]] = None
+    rag_corpus_uri: str = ""
     enable_semantic: bool = True
     lexical_weight: float = 0.6
     semantic_weight: float = 0.4
@@ -34,6 +38,7 @@ class LocalRetrieverConfig:
             cards_csv=os.getenv("MTG_LOCAL_RETRIEVER_CARDS_CSV", cls.cards_csv),
             decks_dir=os.getenv("MTG_LOCAL_RETRIEVER_DECKS_DIR", cls.decks_dir),
             meta_json_paths=meta_paths or None,
+            rag_corpus_uri=os.getenv("MTG_RAG_CORPUS_URI", "").strip(),
             enable_semantic=os.getenv("MTG_LOCAL_RETRIEVER_ENABLE_SEMANTIC", "true").strip().lower()
             in {"1", "true", "yes", "on"},
             lexical_weight=float(os.getenv("MTG_LOCAL_RETRIEVER_LEXICAL_WEIGHT", str(cls.lexical_weight))),
@@ -50,11 +55,7 @@ class LocalHybridRetrieverClient:
         if self._index is not None:
             return self._index
 
-        chunks = build_domain_corpus(
-            cards_csv=self.config.cards_csv,
-            decks_dir=self.config.decks_dir,
-            meta_json_paths=self.config.meta_json_paths,
-        )
+        chunks = self._build_chunks()
         if not chunks:
             raise ValueError("Unable to build retrieval corpus from local data paths.")
 
@@ -65,6 +66,49 @@ class LocalHybridRetrieverClient:
             enable_semantic=self.config.enable_semantic,
         )
         return self._index
+
+    def get_index(self) -> HybridRetrievalIndex:
+        return self._ensure_index()
+
+    def _build_chunks(self) -> List[DocumentChunk]:
+        if self.config.rag_corpus_uri:
+            return self._load_chunks_from_uri(self.config.rag_corpus_uri)
+        return build_domain_corpus(
+            cards_csv=self.config.cards_csv,
+            decks_dir=self.config.decks_dir,
+            meta_json_paths=self.config.meta_json_paths,
+        )
+
+    @staticmethod
+    def _load_chunks_from_uri(path_or_uri: str) -> List[DocumentChunk]:
+        local_path = resolve_uri_to_local_path(path_or_uri)
+        if not os.path.isfile(local_path):
+            raise FileNotFoundError(f"RAG corpus file not found: {local_path}")
+
+        chunks: List[DocumentChunk] = []
+        if local_path.endswith(".jsonl"):
+            with open(local_path, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    payload = json.loads(line)
+                    if isinstance(payload, dict):
+                        chunks.append(DocumentChunk.from_dict(payload))
+            return chunks
+
+        with open(local_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if isinstance(payload, list):
+            for item in payload:
+                if isinstance(item, dict):
+                    chunks.append(DocumentChunk.from_dict(item))
+        elif isinstance(payload, dict):
+            items = payload.get("chunks", [])
+            for item in items:
+                if isinstance(item, dict):
+                    chunks.append(DocumentChunk.from_dict(item))
+        return chunks
 
     @staticmethod
     def _passes_source_filter(source: str, plan: RetrievalPlan) -> bool:

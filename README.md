@@ -174,10 +174,12 @@ The UI now includes:
 ### Hybrid Deployed Mode (GCP)
 This repo now includes a deployable GCP runtime package under `gcp_agent_runtime/` with:
 - Multi-agent orchestration (`RootCoordinatorAgent`, `QueryRewriteAgent`, `RetrieverAgent`, `RerankAgent`, `CriticAgent`, `DeckPlanAgent`, `SafetyGateAgent`)
-- Backend API adapter contract for Cloud Run (`DeckRecommendationRequest` / `DeckRecommendationResponse`)
+- Backend API adapter endpoints for deck recommendation, research, and chat (`/v1/deck/recommend`, `/v1/research/run`, `/v1/chat/respond`)
 - Deployment script for Vertex AI Agent Engine (`deploy_agent_engine.py`)
 - Corpus sync job entrypoint (`sync_rag_corpus.py`)
 - Vertex-style release gate + LangSmith fanout helpers (`eval/vertex_release_gate.py`, `eval/langsmith_fanout.py`)
+- Env-selectable backend mode (`MTG_BACKEND_MODE=local|vertex`) with optional local fallback (`MTG_VERTEX_FALLBACK_TO_LOCAL=true`)
+- Env-selectable research/chat LLM provider (`MTG_LLM_PROVIDER=openai|vertex|rule`)
 
 For deployment and governance details, see:
 - `docs/gcp_adk_vertex_deployment.md`
@@ -190,13 +192,20 @@ docker compose up --build
 ```
 
 Then open `http://localhost:8501`.
-Compose wires the UI container to `http://mtg-backend:8080/v1/deck/recommend` internally. If you run Streamlit directly on your host instead of Compose, use `MTG_GCP_BACKEND_URL=http://localhost:8080/v1/deck/recommend`.
+Compose wires the UI container to backend endpoints internally:
+- `http://mtg-backend:8080/v1/deck/recommend`
+- `http://mtg-backend:8080/v1/research/run`
+- `http://mtg-backend:8080/v1/chat/respond`
+If you run Streamlit directly on your host instead of Compose, use localhost URLs in `MTG_GCP_BACKEND_URL`, `MTG_GCP_RESEARCH_URL`, and `MTG_GCP_CHAT_URL`.
 
 If you want LLM reranking in the UI, pass your API key:
 
 ```bash
 OPENAI_API_KEY=your_key_here docker compose up --build
 ```
+
+### Cost Per Deck Generation (Estimation)
+Estimated per-deck cost can be modeled as `token_cost + Cloud Run compute_cost`, where `token_cost = (input_tokens/1,000,000 * input_rate) + (output_tokens/1,000,000 * output_rate)` and `compute_cost = (vCPU_seconds * vCPU_rate) + (GiB_seconds * memory_rate)`; for example, with 2,000 input tokens + 800 output tokens on a model priced at `$0.15/M` input and `$0.60/M` output, and a Cloud Run request taking `2.4s` on `1 vCPU` + `0.5 GiB` at assumed rates `$0.000024/vCPU-s` and `$0.0000025/GiB-s`, the estimated total is about **$0.00081 per deck** (replace rates with your current region/model pricing).
 
 ## Usage Example
 

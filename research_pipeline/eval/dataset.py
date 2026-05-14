@@ -5,6 +5,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
+from research_pipeline.io_resolver import resolve_uri_to_local_path
+
 
 @dataclass
 class EvalCase:
@@ -13,18 +15,31 @@ class EvalCase:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
-def load_eval_cases(path: str) -> List[EvalCase]:
-    if not os.path.isfile(path):
-        raise FileNotFoundError(f"Eval dataset not found: {path}")
+def load_eval_cases(
+    path: str = "",
+    cache_dir: str | None = None,
+    storage_client=None,
+) -> List[EvalCase]:
+    requested_path = str(path or "").strip()
+    if not requested_path:
+        requested_path = os.getenv("MTG_EVAL_DATASET_URI", "eval/topics.jsonl")
 
-    with open(path, "r", encoding="utf-8") as handle:
+    local_path = resolve_uri_to_local_path(
+        requested_path,
+        cache_dir=cache_dir,
+        storage_client=storage_client,
+    )
+    if not os.path.isfile(local_path):
+        raise FileNotFoundError(f"Eval dataset not found: {requested_path}")
+
+    with open(local_path, "r", encoding="utf-8") as handle:
         raw = handle.read().strip()
 
     if not raw:
         return []
 
     items: List[Dict[str, Any]] = []
-    if path.endswith(".jsonl"):
+    if local_path.endswith(".jsonl"):
         for line in raw.splitlines():
             line = line.strip()
             if not line:

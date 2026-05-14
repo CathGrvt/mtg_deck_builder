@@ -67,6 +67,15 @@ def _keyword_tokens(text: str) -> List[str]:
     return tokens
 
 
+def _has_vertex_sdk() -> bool:
+    try:
+        import vertexai  # noqa: F401
+        from vertexai.generative_models import GenerativeModel  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
 class AgentLLM(ABC):
     @abstractmethod
     def plan_subquestions(
@@ -457,12 +466,95 @@ class OpenAIChatLLM(AgentLLM):
         return self.fallback.write_report(topic, retrieved_chunks, gaps)
 
 
+class VertexChatLLM(OpenAIChatLLM):
+    def __init__(
+        self,
+        model: str = "gemini-2.5-flash",
+        project: str = "",
+        location: str = "us-central1",
+        timeout_sec: int = 45,
+        fallback: AgentLLM | None = None,
+    ):
+        super().__init__(
+            model=model,
+            api_key_env="__vertex_not_used__",
+            base_url="https://vertex.invalid",
+            timeout_sec=timeout_sec,
+            fallback=fallback,
+        )
+        self.project = project
+        self.location = location
+
+    def _chat_json(self, system_prompt: str, user_payload: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            import vertexai
+            from vertexai.generative_models import GenerationConfig, GenerativeModel
+        except Exception as exc:  # pragma: no cover
+            raise RuntimeError(
+                "Vertex research LLM requested but Vertex SDK is unavailable."
+            ) from exc
+
+        init_kwargs = {}
+        if self.project:
+            init_kwargs["project"] = self.project
+        if self.location:
+            init_kwargs["location"] = self.location
+        if init_kwargs:
+            vertexai.init(**init_kwargs)
+
+        prompt = "\n\n".join(
+            [
+                f"SYSTEM: {system_prompt}",
+                "USER_PAYLOAD_JSON:",
+                json.dumps(user_payload, ensure_ascii=False),
+                "Return strict JSON only.",
+            ]
+        )
+        model = GenerativeModel(self.model)
+        response = model.generate_content(
+            prompt,
+            generation_config=GenerationConfig(temperature=0.0),
+        )
+
+        content = str(getattr(response, "text", "") or "").strip()
+        if not content:
+            candidates = getattr(response, "candidates", []) or []
+            for candidate in candidates:
+                body = getattr(candidate, "content", None)
+                parts = getattr(body, "parts", []) if body is not None else []
+                for part in parts:
+                    text = str(getattr(part, "text", "") or "").strip()
+                    if text:
+                        content = text
+                        break
+                if content:
+                    break
+        return _extract_json_object(content)
+
+
 def build_default_llm(
     model: str = "gpt-4o-mini",
     api_key_env: str = "OPENAI_API_KEY",
     base_url: str = "https://api.openai.com/v1",
     timeout_sec: int = 45,
+    provider: str | None = None,
+    vertex_model: str = "gemini-2.5-flash",
+    vertex_project: str = "",
+    vertex_location: str = "us-central1",
 ) -> AgentLLM:
+    selected_provider = str(provider or os.getenv("MTG_LLM_PROVIDER", "openai")).strip().lower() or "openai"
+    if selected_provider == "rule":
+        return RuleBasedLLM()
+    if selected_provider == "vertex":
+        if _has_vertex_sdk():
+            return VertexChatLLM(
+                model=vertex_model,
+                project=vertex_project,
+                location=vertex_location,
+                timeout_sec=timeout_sec,
+            )
+        return RuleBasedLLM()
+
     if os.getenv(api_key_env, ""):
         return OpenAIChatLLM(
             model=model,

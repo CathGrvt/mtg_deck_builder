@@ -45,6 +45,11 @@ Response (`DeckRecommendationResponse`):
 - `latency_ms`
 - `model_used`
 
+Additional backend-local endpoints:
+
+- `POST /v1/research/run` for planner/retriever/critic/writer/validator runs
+- `POST /v1/chat/respond` for retrieval-grounded chat responses
+
 ## Local Run (Hybrid Mode)
 
 Create local env file:
@@ -64,9 +69,24 @@ Services:
 - UI: `http://localhost:8501`
 - Backend adapter: `http://localhost:8080`
 
-Compose uses `http://mtg-backend:8080/v1/deck/recommend` inside the UI container. Use `http://localhost:8080/v1/deck/recommend` only when Streamlit is running directly on your host.
+Compose uses backend endpoints inside the UI container:
+
+- `http://mtg-backend:8080/v1/deck/recommend`
+- `http://mtg-backend:8080/v1/research/run`
+- `http://mtg-backend:8080/v1/chat/respond`
+
+Use localhost variants only when Streamlit is running directly on your host.
 
 In `Generate Deck` tab, enable **Use Deployed Agent Backend**.
+`Agentic Research` and `Chatbot` tabs also have per-tab backend toggles and endpoint URL fields.
+
+Backend mode selection is env-driven:
+
+- `MTG_BACKEND_MODE=local` (default): run deck recommendations through local coordinator.
+- `MTG_BACKEND_MODE=vertex`: proxy deck recommendations to Vertex Agent Engine.
+- `MTG_VERTEX_FALLBACK_TO_LOCAL=true`: fallback to local coordinator if Vertex invocation fails.
+
+Research/chat endpoints (`/v1/research/run`, `/v1/chat/respond`) always run backend-local logic.
 
 ## Deploy Backend Adapter (Cloud Run)
 

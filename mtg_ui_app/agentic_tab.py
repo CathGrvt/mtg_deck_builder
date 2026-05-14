@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from datetime import datetime, timezone
 
 import streamlit as st
@@ -10,6 +11,10 @@ from research_pipeline.graph import ResearchPipeline
 from research_pipeline.llm import build_default_llm
 from research_pipeline.reporting import report_to_markdown
 
+from mtg_ui_app.backend_client import (
+    build_research_backend_payload,
+    call_backend_json,
+)
 from mtg_ui_app.shared import (
     build_research_index_with_feedback,
     ensure_research_paths,
@@ -103,6 +108,27 @@ def render_agentic_tab() -> None:
             step=0.05,
             key="agent_semantic_weight",
         )
+        use_deployed_backend = st.checkbox(
+            "Use Deployed Agent Backend",
+            value=False,
+            key="agent_use_deployed_backend",
+            help="Calls backend research endpoint before local pipeline fallback.",
+        )
+        backend_research_url = st.text_input(
+            "Backend Research URL",
+            value=os.getenv("MTG_GCP_RESEARCH_URL", "http://localhost:8080/v1/research/run"),
+            key="agent_backend_research_url",
+            disabled=not use_deployed_backend,
+        )
+        backend_timeout = st.number_input(
+            "Backend Timeout Seconds",
+            min_value=5,
+            max_value=300,
+            value=90,
+            step=1,
+            key="agent_backend_timeout",
+            disabled=not use_deployed_backend,
+        )
 
     with st.expander("LLM Settings (Optional)", expanded=False):
         ac1, ac2 = st.columns(2)
@@ -144,6 +170,121 @@ def render_agentic_tab() -> None:
     if not topic:
         st.error("Please enter a research topic.")
         st.stop()
+
+    def _render_report(report: dict) -> None:
+        st.success("Agentic report generated.")
+
+        st.markdown("**Summary**")
+        st.write(report.get("summary", ""))
+
+        st.markdown("**Claims**")
+        claims = report.get("claims", [])
+        if not claims:
+            st.write("No claims were produced.")
+        else:
+            for idx, claim in enumerate(claims, start=1):
+                claim_text = str(claim.get("claim", ""))
+                confidence = claim.get("confidence", 0.0)
+                citations = claim.get("citations", [])
+                citation_text = ", ".join(
+                    [f"{item.get('doc_id')}::{item.get('chunk_id')}" for item in citations]
+                )
+                st.markdown(
+                    f"{idx}. {claim_text}  \n"
+                    f"`confidence={confidence}`  \n"
+                    f"`citations: {citation_text or 'none'}`"
+                )
+
+        st.markdown("**Open Questions**")
+        open_questions = report.get("open_questions", [])
+        if not open_questions:
+            st.write("None")
+        else:
+            for question in open_questions:
+                st.markdown(f"- {question}")
+
+        st.markdown("**Validation**")
+        st.json(report.get("validation", {}), expanded=False)
+
+        report_json_text = json.dumps(report, indent=2)
+        report_md_text = report_to_markdown(report)
+
+        st.download_button(
+            label="Download Report JSON",
+            data=report_json_text,
+            file_name="research_report.json",
+            mime="application/json",
+            key="download_agent_report_json",
+        )
+        st.download_button(
+            label="Download Report Markdown",
+            data=report_md_text,
+            file_name="research_report.md",
+            mime="text/markdown",
+            key="download_agent_report_md",
+        )
+
+    if use_deployed_backend:
+        backend_payload = build_research_backend_payload(
+            session_id=f"agentic-{uuid.uuid4().hex[:12]}",
+            topic=topic,
+            max_iterations=int(agent_max_iterations),
+            max_questions=int(agent_max_questions),
+            top_k_per_query=int(agent_top_k),
+            enable_semantic=bool(agent_enable_semantic),
+            use_langgraph=bool(agent_use_langgraph),
+        )
+        try:
+            with st.spinner("Calling deployed backend research endpoint..."):
+                backend_response = call_backend_json(
+                    backend_url=backend_research_url,
+                    payload=backend_payload,
+                    timeout_sec=int(backend_timeout),
+                )
+        except Exception as e:
+            st.warning(f"Backend research call failed ({e}). Falling back to local pipeline.")
+        else:
+            report = backend_response.get("report", {})
+            if isinstance(report, dict) and "validation" not in report:
+                report = dict(report)
+                report["validation"] = backend_response.get("validation", {})
+            if not isinstance(report, dict):
+                st.error("Backend response did not include a valid report object.")
+                st.stop()
+            _render_report(report)
+            st.info(
+                "Backend metadata:\n"
+                f"- latency_ms: {backend_response.get('latency_ms', 'n/a')}\n"
+                f"- model_used: {backend_response.get('model_used', 'n/a')}\n"
+                f"- trace_id: {backend_response.get('trace_id', 'n/a')}"
+            )
+            if save_agentic_run:
+                os.makedirs(agentic_out_dir, exist_ok=True)
+                run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                run_dir = os.path.join(agentic_out_dir, run_id)
+                os.makedirs(run_dir, exist_ok=True)
+                trace_path = os.path.join(run_dir, "trace.jsonl")
+                with open(trace_path, "a", encoding="utf-8"):
+                    pass
+                artifacts = save_agentic_run_artifacts(
+                    output={
+                        "report": report,
+                        "state": {"backend_response": backend_response},
+                    },
+                    out_dir=agentic_out_dir,
+                    run_dir=run_dir,
+                    trace_path=trace_path,
+                )
+                st.info(
+                    "Artifacts saved:\n"
+                    f"- run_dir: {artifacts['run_dir']}\n"
+                    f"- report_json: {artifacts['report_json']}\n"
+                    f"- report_md: {artifacts['report_md']}\n"
+                    f"- state_json: {artifacts['state_json']}\n"
+                    f"- trace_jsonl: {artifacts['trace_jsonl']}"
+                )
+            st.stop()
+
     if not ensure_research_paths(agent_cards_path, agent_decks_path):
         st.stop()
 
@@ -197,57 +338,7 @@ def render_agentic_tab() -> None:
         st.stop()
 
     report = output["report"]
-    st.success("Agentic report generated.")
-
-    st.markdown("**Summary**")
-    st.write(report.get("summary", ""))
-
-    st.markdown("**Claims**")
-    claims = report.get("claims", [])
-    if not claims:
-        st.write("No claims were produced.")
-    else:
-        for idx, claim in enumerate(claims, start=1):
-            claim_text = str(claim.get("claim", ""))
-            confidence = claim.get("confidence", 0.0)
-            citations = claim.get("citations", [])
-            citation_text = ", ".join(
-                [f"{item.get('doc_id')}::{item.get('chunk_id')}" for item in citations]
-            )
-            st.markdown(
-                f"{idx}. {claim_text}  \n"
-                f"`confidence={confidence}`  \n"
-                f"`citations: {citation_text or 'none'}`"
-            )
-
-    st.markdown("**Open Questions**")
-    open_questions = report.get("open_questions", [])
-    if not open_questions:
-        st.write("None")
-    else:
-        for question in open_questions:
-            st.markdown(f"- {question}")
-
-    st.markdown("**Validation**")
-    st.json(report.get("validation", {}), expanded=False)
-
-    report_json_text = json.dumps(report, indent=2)
-    report_md_text = report_to_markdown(report)
-
-    st.download_button(
-        label="Download Report JSON",
-        data=report_json_text,
-        file_name="research_report.json",
-        mime="application/json",
-        key="download_agent_report_json",
-    )
-    st.download_button(
-        label="Download Report Markdown",
-        data=report_md_text,
-        file_name="research_report.md",
-        mime="text/markdown",
-        key="download_agent_report_md",
-    )
+    _render_report(report)
 
     if save_agentic_run and run_dir is not None:
         artifacts = save_agentic_run_artifacts(

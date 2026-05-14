@@ -1,4 +1,5 @@
-from gcp_agent_runtime.adapter import CloudRunAgentAdapter
+from gcp_agent_runtime.adapter import AdapterSettings, CloudRunAgentAdapter
+from gcp_agent_runtime.backend_services import ChatBackendService, ResearchBackendService
 from gcp_agent_runtime.contracts import (
     DeckCitation,
     DeckRecommendationRequest,
@@ -20,9 +21,13 @@ from gcp_agent_runtime.query_rewrite import QueryRewriteAgent
 from gcp_agent_runtime.rerank import RerankAgent
 from gcp_agent_runtime.retrieval import LocalHybridRetrieverClient, RetrieverAgent
 from gcp_agent_runtime.safety import SafetyGateAgent
+from gcp_agent_runtime.vertex_agent_engine import VertexAgentEngineClient
 
 __all__ = [
     "CloudRunAgentAdapter",
+    "AdapterSettings",
+    "ResearchBackendService",
+    "ChatBackendService",
     "CriticAgent",
     "DeckCitation",
     "DeckPlanAgent",
@@ -41,4 +46,5 @@ __all__ = [
     "RootCoordinatorAgent",
     "SafetyGateAgent",
     "SafetyVerdict",
+    "VertexAgentEngineClient",
 ]

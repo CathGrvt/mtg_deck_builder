@@ -9,6 +9,13 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       PORT: 8080
       MTG_LOCAL_RETRIEVER_ENABLE_SEMANTIC: ${MTG_LOCAL_RETRIEVER_ENABLE_SEMANTIC:-false}
+      MTG_BACKEND_MODE: ${MTG_BACKEND_MODE:-local}
+      MTG_LLM_PROVIDER: ${MTG_LLM_PROVIDER:-openai}
+      MTG_OPENAI_MODEL: ${MTG_OPENAI_MODEL:-gpt-4o-mini}
+      MTG_VERTEX_MODEL: ${MTG_VERTEX_MODEL:-gemini-2.5-flash}
+      MTG_RAG_CORPUS_URI: ${MTG_RAG_CORPUS_URI:-}
+      MTG_VERTEX_AGENT_ENGINE_RESOURCE: ${MTG_VERTEX_AGENT_ENGINE_RESOURCE:-}
+      MTG_VERTEX_FALLBACK_TO_LOCAL: ${MTG_VERTEX_FALLBACK_TO_LOCAL:-true}
     volumes:
       - ./:/app
     healthcheck:
@@ -27,6 +34,8 @@ services:
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MTG_GCP_BACKEND_URL: ${MTG_COMPOSE_BACKEND_URL:-http://mtg-backend:8080/v1/deck/recommend}
+      MTG_GCP_RESEARCH_URL: ${MTG_COMPOSE_RESEARCH_URL:-http://mtg-backend:8080/v1/research/run}
+      MTG_GCP_CHAT_URL: ${MTG_COMPOSE_CHAT_URL:-http://mtg-backend:8080/v1/chat/respond}
     volumes:
       - ./:/app
     depends_on:

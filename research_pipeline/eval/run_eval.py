@@ -14,7 +14,11 @@ from research_pipeline.graph import build_pipeline_from_local_data
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run eval harness for the research pipeline.")
-    parser.add_argument("--dataset", default="eval/topics.jsonl", help="Path to eval dataset (.jsonl/.json).")
+    parser.add_argument(
+        "--dataset",
+        default=os.getenv("MTG_EVAL_DATASET_URI", "eval/topics.jsonl"),
+        help="Path or gs:// URI to eval dataset (.jsonl/.json).",
+    )
     parser.add_argument("--cards", default="data/commander_cards.csv", help="Path to card CSV.")
     parser.add_argument("--decks", default="current_commander_decks", help="Path to decklist directory.")
     parser.add_argument(

@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import os
+import uuid
 from typing import Any, Dict, Optional
 
 import streamlit as st
 
 from research_pipeline.retrieval.index import HybridRetrievalIndex
 
+from mtg_ui_app.backend_client import (
+    build_chat_backend_payload,
+    call_backend_json,
+)
 from mtg_ui_app.shared import (
     build_research_index_with_feedback,
     ensure_research_paths,
@@ -69,6 +75,27 @@ def render_chat_tab() -> None:
             step=0.05,
             key="chat_semantic_weight",
         )
+        chat_use_backend = st.checkbox(
+            "Use Deployed Agent Backend",
+            value=False,
+            key="chat_use_backend",
+            help="Calls backend chat endpoint before local pipeline fallback.",
+        )
+        chat_backend_url = st.text_input(
+            "Backend Chat URL",
+            value=os.getenv("MTG_GCP_CHAT_URL", "http://localhost:8080/v1/chat/respond"),
+            key="chat_backend_url",
+            disabled=not chat_use_backend,
+        )
+        chat_backend_timeout = st.number_input(
+            "Backend Timeout Seconds",
+            min_value=5,
+            max_value=240,
+            value=60,
+            step=1,
+            key="chat_backend_timeout",
+            disabled=not chat_use_backend,
+        )
 
     with st.expander("Chat LLM Settings (Optional)", expanded=False):
         cc1, cc2 = st.columns(2)
@@ -118,6 +145,7 @@ def render_chat_tab() -> None:
         st.session_state["mtg_chat_messages"] = []
     if clear_chat:
         st.session_state["mtg_chat_messages"] = []
+        st.session_state.pop("mtg_chat_session_id", None)
 
     chat_index: Optional[HybridRetrievalIndex] = None
     parsed_chat_meta_paths = parse_path_list(chat_meta_paths_raw)
@@ -148,10 +176,6 @@ def render_chat_tab() -> None:
     if not user_prompt:
         return
 
-    if chat_index is None:
-        st.error("Chatbot index is not available. Fix paths/settings first.")
-        st.stop()
-
     st.session_state["mtg_chat_messages"].append(
         {
             "role": "user",
@@ -160,6 +184,40 @@ def render_chat_tab() -> None:
     )
 
     history_before_answer = st.session_state["mtg_chat_messages"][:-1]
+
+    if chat_use_backend:
+        backend_payload = build_chat_backend_payload(
+            session_id=st.session_state.get("mtg_chat_session_id", f"chat-{uuid.uuid4().hex[:12]}"),
+            question=user_prompt,
+            history=history_before_answer,
+            top_k=int(chat_top_k),
+        )
+        st.session_state["mtg_chat_session_id"] = backend_payload["session_id"]
+        try:
+            with st.spinner("Calling deployed backend chat endpoint..."):
+                backend_response = call_backend_json(
+                    backend_url=chat_backend_url,
+                    payload=backend_payload,
+                    timeout_sec=int(chat_backend_timeout),
+                )
+        except Exception as e:
+            st.warning(f"Backend chat call failed ({e}). Falling back to local chat pipeline.")
+        else:
+            answer_text = str(backend_response.get("answer", "")).strip() or "(No answer)"
+            evidence = backend_response.get("evidence", [])
+            st.session_state["mtg_chat_messages"].append(
+                {
+                    "role": "assistant",
+                    "content": answer_text,
+                    "evidence": evidence if isinstance(evidence, list) else [],
+                }
+            )
+            st.rerun()
+
+    if chat_index is None:
+        st.error("Chatbot index is not available. Fix paths/settings first.")
+        st.stop()
+
     with st.spinner("Generating answer..."):
         answer_text, evidence = generate_chatbot_answer(
             question=user_prompt,

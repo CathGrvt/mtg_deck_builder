@@ -20,6 +20,7 @@ from research_pipeline.reporting import report_to_markdown
 from research_pipeline.retrieval.corpus import build_domain_corpus
 from research_pipeline.retrieval.index import HybridRetrievalIndex
 from research_pipeline.set_aliases import extract_set_codes_from_text
+from mtg_ui_app.backend_client import call_backend_json
 
 
 @st.cache_data(show_spinner=False)
@@ -160,20 +161,11 @@ def call_deployed_recommendation(
     """
     Call deployed backend adapter endpoint that proxies to Agent Engine.
     """
-    url = str(backend_url or "").strip()
-    if not url:
-        raise ValueError("backend_url is required.")
-
-    response = requests.post(
-        url,
-        json=payload,
-        timeout=max(5, int(timeout_sec)),
+    return call_backend_json(
+        backend_url=backend_url,
+        payload=payload,
+        timeout_sec=timeout_sec,
     )
-    response.raise_for_status()
-    data = response.json()
-    if not isinstance(data, dict):
-        raise ValueError("Backend response was not a JSON object.")
-    return data
 
 
 def render_chat_evidence(evidence: Sequence[Dict[str, Any]], max_items: int = 8) -> None:
