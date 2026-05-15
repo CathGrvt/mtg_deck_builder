@@ -8,13 +8,8 @@ from gcp_agent_runtime.backend_services import ChatBackendService, ResearchBacke
 from gcp_agent_runtime.contracts import DeckRecommendationRequest
 from gcp_agent_runtime.coordinator import RootCoordinatorAgent
 from gcp_agent_runtime.vertex_agent_engine import VertexAgentEngineClient
-
-
-def _bool_env(name: str, default: bool) -> bool:
-    value = os.getenv(name, "").strip().lower()
-    if not value:
-        return default
-    return value in {"1", "true", "yes", "on"}
+from mtg_shared.env import parse_bool_env, parse_bool_value
+from mtg_shared.runtime_env import runtime_env_default
 
 
 @dataclass
@@ -26,14 +21,24 @@ class AdapterSettings:
 
     @classmethod
     def from_env(cls) -> "AdapterSettings":
-        mode = os.getenv("MTG_BACKEND_MODE", "local").strip().lower() or "local"
+        mode = os.getenv("MTG_BACKEND_MODE", runtime_env_default("MTG_BACKEND_MODE", "local")).strip().lower()
+        mode = mode or runtime_env_default("MTG_BACKEND_MODE", "local")
         if mode not in {"local", "vertex"}:
             raise ValueError("MTG_BACKEND_MODE must be either 'local' or 'vertex'.")
         return cls(
             backend_mode=mode,
-            vertex_fallback_to_local=_bool_env("MTG_VERTEX_FALLBACK_TO_LOCAL", True),
-            vertex_proxy_research=_bool_env("MTG_VERTEX_PROXY_RESEARCH", False),
-            vertex_proxy_chat=_bool_env("MTG_VERTEX_PROXY_CHAT", False),
+            vertex_fallback_to_local=parse_bool_env(
+                "MTG_VERTEX_FALLBACK_TO_LOCAL",
+                parse_bool_value(runtime_env_default("MTG_VERTEX_FALLBACK_TO_LOCAL", "true"), default=True),
+            ),
+            vertex_proxy_research=parse_bool_env(
+                "MTG_VERTEX_PROXY_RESEARCH",
+                parse_bool_value(runtime_env_default("MTG_VERTEX_PROXY_RESEARCH", "false"), default=False),
+            ),
+            vertex_proxy_chat=parse_bool_env(
+                "MTG_VERTEX_PROXY_CHAT",
+                parse_bool_value(runtime_env_default("MTG_VERTEX_PROXY_CHAT", "false"), default=False),
+            ),
         )
 
 

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Protocol
 
 from gcp_agent_runtime.contracts import RetrievedEvidence, RetrievalBundle, RetrievalPlan
+from mtg_shared.env import parse_bool_value
+from mtg_shared.runtime_env import runtime_env_default
 from research_pipeline.io_resolver import resolve_uri_to_local_path
 from research_pipeline.models import DocumentChunk
 from research_pipeline.retrieval.corpus import build_domain_corpus
@@ -31,18 +33,42 @@ class LocalRetrieverConfig:
     def from_env(cls) -> "LocalRetrieverConfig":
         meta_paths = [
             item.strip()
-            for item in os.getenv("MTG_LOCAL_RETRIEVER_META_JSON_PATHS", "").split(",")
+            for item in os.getenv(
+                "MTG_LOCAL_RETRIEVER_META_JSON_PATHS",
+                runtime_env_default("MTG_LOCAL_RETRIEVER_META_JSON_PATHS", ""),
+            ).split(",")
             if item.strip()
         ]
         return cls(
-            cards_csv=os.getenv("MTG_LOCAL_RETRIEVER_CARDS_CSV", cls.cards_csv),
-            decks_dir=os.getenv("MTG_LOCAL_RETRIEVER_DECKS_DIR", cls.decks_dir),
+            cards_csv=os.getenv(
+                "MTG_LOCAL_RETRIEVER_CARDS_CSV",
+                runtime_env_default("MTG_LOCAL_RETRIEVER_CARDS_CSV", cls.cards_csv),
+            ),
+            decks_dir=os.getenv(
+                "MTG_LOCAL_RETRIEVER_DECKS_DIR",
+                runtime_env_default("MTG_LOCAL_RETRIEVER_DECKS_DIR", cls.decks_dir),
+            ),
             meta_json_paths=meta_paths or None,
-            rag_corpus_uri=os.getenv("MTG_RAG_CORPUS_URI", "").strip(),
-            enable_semantic=os.getenv("MTG_LOCAL_RETRIEVER_ENABLE_SEMANTIC", "true").strip().lower()
-            in {"1", "true", "yes", "on"},
-            lexical_weight=float(os.getenv("MTG_LOCAL_RETRIEVER_LEXICAL_WEIGHT", str(cls.lexical_weight))),
-            semantic_weight=float(os.getenv("MTG_LOCAL_RETRIEVER_SEMANTIC_WEIGHT", str(cls.semantic_weight))),
+            rag_corpus_uri=os.getenv("MTG_RAG_CORPUS_URI", runtime_env_default("MTG_RAG_CORPUS_URI", "")).strip(),
+            enable_semantic=parse_bool_value(
+                os.getenv(
+                    "MTG_LOCAL_RETRIEVER_ENABLE_SEMANTIC",
+                    runtime_env_default("MTG_LOCAL_RETRIEVER_ENABLE_SEMANTIC", "true"),
+                ),
+                default=True,
+            ),
+            lexical_weight=float(
+                os.getenv(
+                    "MTG_LOCAL_RETRIEVER_LEXICAL_WEIGHT",
+                    runtime_env_default("MTG_LOCAL_RETRIEVER_LEXICAL_WEIGHT", str(cls.lexical_weight)),
+                )
+            ),
+            semantic_weight=float(
+                os.getenv(
+                    "MTG_LOCAL_RETRIEVER_SEMANTIC_WEIGHT",
+                    runtime_env_default("MTG_LOCAL_RETRIEVER_SEMANTIC_WEIGHT", str(cls.semantic_weight)),
+                )
+            ),
         )
 
 

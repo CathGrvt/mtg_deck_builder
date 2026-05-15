@@ -5,11 +5,13 @@ import os
 from dataclasses import dataclass
 from typing import Dict, Optional, Sequence
 
-import requests
+from mtg_shared.env import parse_int_value
+from mtg_shared.openai_api import chat_completion_content
+from mtg_shared.runtime_env import runtime_env_default
+from mtg_shared.secrets import resolve_openai_api_key
 
 from research_pipeline.llm import AgentLLM, RuleBasedLLM, build_default_llm
 from research_pipeline.models import RetrievedChunk
-from research_pipeline.secret_resolver import resolve_openai_api_key
 
 
 @dataclass
@@ -25,16 +27,33 @@ class LLMProviderConfig:
 
     @classmethod
     def from_env(cls) -> "LLMProviderConfig":
-        provider = os.getenv("MTG_LLM_PROVIDER", "openai").strip().lower() or "openai"
+        provider = os.getenv("MTG_LLM_PROVIDER", runtime_env_default("MTG_LLM_PROVIDER", "openai")).strip().lower()
+        provider = provider or runtime_env_default("MTG_LLM_PROVIDER", "openai")
         return cls(
             provider=provider,
-            openai_model=os.getenv("MTG_OPENAI_MODEL", cls.openai_model),
-            openai_api_key_env=os.getenv("MTG_OPENAI_API_KEY_ENV", cls.openai_api_key_env),
-            openai_base_url=os.getenv("MTG_OPENAI_BASE_URL", cls.openai_base_url),
-            timeout_sec=max(5, int(os.getenv("MTG_LLM_TIMEOUT_SEC", str(cls.timeout_sec)))),
-            vertex_model=os.getenv("MTG_VERTEX_MODEL", cls.vertex_model),
+            openai_model=os.getenv("MTG_OPENAI_MODEL", runtime_env_default("MTG_OPENAI_MODEL", cls.openai_model)),
+            openai_api_key_env=os.getenv(
+                "MTG_OPENAI_API_KEY_ENV",
+                runtime_env_default("MTG_OPENAI_API_KEY_ENV", cls.openai_api_key_env),
+            ),
+            openai_base_url=os.getenv(
+                "MTG_OPENAI_BASE_URL",
+                runtime_env_default("MTG_OPENAI_BASE_URL", cls.openai_base_url),
+            ),
+            timeout_sec=parse_int_value(
+                os.getenv("MTG_LLM_TIMEOUT_SEC", runtime_env_default("MTG_LLM_TIMEOUT_SEC", str(cls.timeout_sec))),
+                int(runtime_env_default("MTG_LLM_TIMEOUT_SEC", str(cls.timeout_sec))),
+                minimum=5,
+            ),
+            vertex_model=os.getenv("MTG_VERTEX_MODEL", runtime_env_default("MTG_VERTEX_MODEL", cls.vertex_model)),
             vertex_project=os.getenv("GOOGLE_CLOUD_PROJECT", "").strip(),
-            vertex_location=os.getenv("GOOGLE_CLOUD_LOCATION", cls.vertex_location).strip() or cls.vertex_location,
+            vertex_location=(
+                os.getenv(
+                    "GOOGLE_CLOUD_LOCATION",
+                    runtime_env_default("GOOGLE_CLOUD_LOCATION", cls.vertex_location),
+                ).strip()
+                or runtime_env_default("GOOGLE_CLOUD_LOCATION", cls.vertex_location)
+            ),
         )
 
 
@@ -126,26 +145,15 @@ class LLMProviderRuntime:
         if not api_key:
             raise ValueError(f"Environment variable '{self.config.openai_api_key_env}' is not set.")
 
-        response = requests.post(
-            self.config.openai_base_url.rstrip("/") + "/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": self.config.openai_model,
-                "temperature": float(temperature),
-                "messages": list(messages),
-            },
-            timeout=self.config.timeout_sec,
+        return chat_completion_content(
+            api_key=api_key,
+            model=self.config.openai_model,
+            base_url=self.config.openai_base_url,
+            timeout_sec=self.config.timeout_sec,
+            temperature=float(temperature),
+            messages=list(messages),
+            empty_message="",
         )
-        response.raise_for_status()
-        payload = response.json()
-        choices = payload.get("choices") or []
-        if not choices:
-            return ""
-        message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
-        return str(message.get("content", "")).strip()
 
     def _chat_vertex(self, messages: Sequence[Dict[str, str]], temperature: float) -> str:
         try:

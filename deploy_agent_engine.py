@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from typing import List
 
 from gcp_agent_runtime.adk_app import build_agent_engine_app
 from gcp_agent_runtime.telemetry import TelemetryConfig, build_agent_engine_env_vars
+from mtg_shared.runtime_env import collect_runtime_env_values
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,35 +42,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def _collect_agent_runtime_env() -> dict:
-    keys = [
-        "GOOGLE_CLOUD_PROJECT",
-        "GOOGLE_CLOUD_LOCATION",
-        "MTG_LLM_PROVIDER",
-        "MTG_OPENAI_MODEL",
-        "MTG_OPENAI_API_KEY_ENV",
-        "MTG_OPENAI_API_KEY_SECRET_RESOURCE",
-        "MTG_OPENAI_API_KEY_SECRET",
-        "MTG_OPENAI_BASE_URL",
-        "MTG_VERTEX_MODEL",
-        "MTG_LLM_TIMEOUT_SEC",
-        "MTG_CHAT_ENABLE_CLARIFICATION",
-        "MTG_CHAT_MAX_CLARIFICATION_TURNS",
-        "LANGSMITH_API_KEY_SECRET_RESOURCE",
-        "LANGSMITH_API_KEY_SECRET",
-        "MTG_RAG_CORPUS_URI",
-        "MTG_LOCAL_RETRIEVER_CARDS_CSV",
-        "MTG_LOCAL_RETRIEVER_DECKS_DIR",
-        "MTG_LOCAL_RETRIEVER_META_JSON_PATHS",
-        "MTG_LOCAL_RETRIEVER_ENABLE_SEMANTIC",
-        "MTG_LOCAL_RETRIEVER_LEXICAL_WEIGHT",
-        "MTG_LOCAL_RETRIEVER_SEMANTIC_WEIGHT",
-    ]
-    result = {}
-    for key in keys:
-        value = os.getenv(key, "")
-        if str(value).strip():
-            result[key] = str(value)
-    return result
+    return collect_runtime_env_values(target="agent-engine", include_defaults=False)
 
 
 def deploy(

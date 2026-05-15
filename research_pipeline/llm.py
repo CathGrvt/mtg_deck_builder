@@ -2,70 +2,48 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Sequence
 
-import requests
+from mtg_shared.openai_api import chat_completion_json_object
+from mtg_shared.runtime_env import runtime_env_default
+from mtg_shared.secrets import resolve_openai_api_key
+from mtg_shared.text import extract_json_object, keyword_tokens
 
 from research_pipeline.models import Citation, Claim, RetrievedChunk, StructuredReport
-from research_pipeline.secret_resolver import resolve_openai_api_key
 
 
 def _extract_json_object(text: str) -> Dict[str, Any]:
-    if not text:
-        return {}
-    try:
-        payload = json.loads(text)
-        if isinstance(payload, dict):
-            return payload
-        return {}
-    except json.JSONDecodeError:
-        pass
-
-    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-    if not match:
-        return {}
-
-    try:
-        payload = json.loads(match.group(0))
-        if isinstance(payload, dict):
-            return payload
-    except json.JSONDecodeError:
-        return {}
-    return {}
+    return extract_json_object(text)
 
 
 def _keyword_tokens(text: str) -> List[str]:
-    stopwords = {
-        "the",
-        "and",
-        "for",
-        "with",
-        "that",
-        "this",
-        "from",
-        "into",
-        "your",
-        "their",
-        "about",
-        "what",
-        "which",
-        "when",
-        "where",
-        "how",
-        "why",
-        "mtg",
-        "magic",
-        "gathering",
-        "deck",
-    }
-    tokens = [
-        token
-        for token in re.findall(r"[A-Za-z0-9']+", text.lower())
-        if len(token) >= 4 and token not in stopwords
-    ]
-    return tokens
+    return keyword_tokens(
+        text,
+        stopwords={
+            "the",
+            "and",
+            "for",
+            "with",
+            "that",
+            "this",
+            "from",
+            "into",
+            "your",
+            "their",
+            "about",
+            "what",
+            "which",
+            "when",
+            "where",
+            "how",
+            "why",
+            "mtg",
+            "magic",
+            "gathering",
+            "deck",
+        },
+    )
 
 
 def _has_vertex_sdk() -> bool:
@@ -292,35 +270,19 @@ class OpenAIChatLLM(AgentLLM):
             raise ValueError(
                 f"Environment variable '{self.api_key_env}' is not set."
             )
-
-        response = requests.post(
-            self.base_url + "/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": self.model,
-                "temperature": 0.0,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {
-                        "role": "user",
-                        "content": json.dumps(user_payload, ensure_ascii=False),
-                    },
-                ],
-            },
-            timeout=self.timeout_sec,
+        return chat_completion_json_object(
+            api_key=api_key,
+            model=self.model,
+            base_url=self.base_url,
+            timeout_sec=self.timeout_sec,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": json.dumps(user_payload, ensure_ascii=False),
+                },
+            ],
         )
-        response.raise_for_status()
-        data = response.json()
-        choices = data.get("choices") or []
-        if not choices:
-            return {}
-
-        message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
-        content = str(message.get("content", "")).strip()
-        return _extract_json_object(content)
 
     def plan_subquestions(
         self,
@@ -543,7 +505,9 @@ def build_default_llm(
     vertex_project: str = "",
     vertex_location: str = "us-central1",
 ) -> AgentLLM:
-    selected_provider = str(provider or os.getenv("MTG_LLM_PROVIDER", "openai")).strip().lower() or "openai"
+    selected_provider = str(
+        provider or os.getenv("MTG_LLM_PROVIDER", runtime_env_default("MTG_LLM_PROVIDER", "openai"))
+    ).strip().lower() or runtime_env_default("MTG_LLM_PROVIDER", "openai")
     if selected_provider == "rule":
         return RuleBasedLLM()
     if selected_provider == "vertex":

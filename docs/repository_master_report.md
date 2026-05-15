@@ -456,131 +456,18 @@ python deck_analysis.py current_commander_decks/some_deck.txt --cards data/comma
 
 ---
 
-## 9. Meta Analysis Scripts
+## 9. Meta Analysis
 
-The repo keeps multiple meta-analysis strategies because each one captures different signals.
+Legacy standalone meta analyzer scripts were retired. The supported analysis surface is now:
 
-```mermaid
-flowchart TD
-    A[Card CSV + decklists] --> B[Pattern-based parser]
-    A --> C[Keyword/statistical analyzer]
-    A --> D[Semantic analyzer]
-    D --> E[Deck-name enhancer]
-    B --> F[parse_meta_analysis_results.json]
-    C --> G[meta_keyword_analysis_results.json]
-    E --> H[enhanced_semantic_meta_analysis.json]
-    F --> I[consolidated_meta_analysis.py]
-    G --> I
-    H --> I
-    I --> J[consolidated_meta_report.json]
-```
+- `deck_analysis.py` for per-deck archetype and legality analysis.
+- `research_pipeline/` for retrieval-grounded, citation-backed meta and strategy research.
 
-### 9.1 Pattern-Based Analysis: `analyze_meta_old_try_to_parse.py`
+Recommended workflow:
 
-This is the detailed rule-based analyzer. It uses regex and predefined mechanic patterns to infer mechanics and synergies.
-
-Key classes:
-
-| Class | Role |
-|---|---|
-| `DynamicArchetypeClassifier` | Calculates deck statistics and fuzzy archetype scores. |
-| `DynamicCardMechanicsAnalyzer` | Extracts keywords and non-keyword mechanics from card text. |
-| `DynamicSynergyDetector` | Detects enabler/payoff patterns, creature-type synergies, Room synergies, and mechanical synergies. |
-| `DynamicMetaAnalyzer` | Applies these analyses across decklists and emits meta-level statistics. |
-
-Strengths:
-
-- Detailed mechanic labels.
-- Explainable regex matches.
-- Special support for Room cards.
-
-Limitations:
-
-- Can miss mechanics not covered by patterns.
-- Can misclassify text if regexes are too broad.
-
-### 9.2 Keyword-Based Analysis: `analyze_meta_using_keywords.py`
-
-This analyzer minimizes hardcoded mechanic assumptions. It extracts type, subtype, supertype, and keyword distributions directly from the card database and decks.
-
-Key classes:
-
-| Class | Role |
-|---|---|
-| `MetaCardAnalyzer` | Extracts card characteristics from type lines and keywords. |
-| `DynamicArchetypeClassifier` | Classifies decks using statistical distributions. |
-| `MetaAnalyzer` | Processes all decklists and calculates aggregate meta statistics. |
-
-Strengths:
-
-- More stable when new sets introduce unexpected mechanics.
-- Good for objective type and keyword statistics.
-
-Limitations:
-
-- Less able to explain deeper synergies.
-
-### 9.3 Semantic Analysis: `semantics_meta_analysis.py`
-
-This script uses semantic embeddings and clustering to discover patterns from oracle text.
-
-Key class: `MTGSemanticAnalyzer`
-
-Important capabilities:
-
-- Builds card embeddings from card text.
-- Generates deck embeddings by aggregating card vectors.
-- Clusters cards within a deck to find theme groups.
-- Clusters decks to find meta-level archetype groups.
-- Extracts deck and meta themes.
-- Detects frequent card combinations and emergent themes.
-
-Strengths:
-
-- Can find relationships not explicitly hardcoded.
-- Useful for exploratory analysis.
-
-Limitations:
-
-- Less interpretable than rule-based results.
-- Embeddings are general-purpose unless a Magic-specific model is trained.
-
-### 9.4 Deck Name Analyzer: `integrated_deck_name_analyzer.py`
-
-This module treats deck names as signal. Community deck names often encode archetype, commander, color, tribe, or strategy.
-
-Key class: `FullyDynamicDeckAnalyzer`
-
-Capabilities:
-
-- Extracts tokens from deck names, preserving hyphenated terms.
-- Uses card data to interpret terms dynamically.
-- Recognizes color identities and common deck-name concepts.
-- Finds shared terms across decks.
-- Enhances semantic meta analysis with deck-name insights.
-
-### 9.5 Consolidated Report: `consolidated_meta_analysis.py`
-
-This script combines JSON outputs from pattern, keyword, semantic, deck-name, and meta-representation analyses.
-
-It generates:
-
-- reconciled meta speed,
-- mana curve patterns,
-- card type distributions,
-- popular color combinations,
-- defining cards,
-- cluster patterns,
-- card clusters,
-- card type trends,
-- archetype interactions,
-- themes,
-- mechanics,
-- popular cards,
-- synergies,
-- MTGGoldfish/Archidekt meta trends.
-
-The consolidated output is stored in `json_outputs/consolidated_meta_report.json`.
+1. Refresh card/deck data (`fetch_standard_legal_cards.py`, scraper scripts).
+2. Run `deck_analysis.py` for targeted deck diagnostics.
+3. Run `run_research_pipeline.py` for broader meta questions with grounded evidence.
 
 ---
 
@@ -1874,11 +1761,6 @@ This appendix is a quick reference for explaining what each important file does.
 | `current_standard_deck_list_scraper.py` | MTGGoldfish scraper for metagame decklists and meta JSON. Filename is legacy; supports configured formats. |
 | `archidekt_deck_list_scraper.py` | Archidekt API scraper for recent decklists with Commander-aware section and size validation. |
 | `deck_analysis.py` | Single-deck analysis, mechanics extraction, archetype scoring, and Commander compliance checks. |
-| `analyze_meta_old_try_to_parse.py` | Pattern/regex-heavy meta analyzer for mechanics and synergies. |
-| `analyze_meta_using_keywords.py` | Statistical keyword/type/subtype meta analyzer. |
-| `semantics_meta_analysis.py` | Embedding and clustering based semantic meta analyzer. |
-| `integrated_deck_name_analyzer.py` | Enhances semantic analysis with deck-name token and community-label signals. |
-| `consolidated_meta_analysis.py` | Merges multiple analysis outputs into a consolidated JSON meta report. |
 | `deck_corpus_builder.py` | Builds sparse deck-by-card matrix, deck color vectors, vocabulary, and corpus metadata. |
 | `train_deck_generator.py` | Trains MiniBatchKMeans deck clusters and optional oracle-text semantic vectors. |
 | `ai_deck_generator.py` | Generates decklists from color filters, training frequency, optional cluster/semantic weighting, and optional LLM rerank. |
@@ -2021,4 +1903,3 @@ This appendix is a quick reference for explaining what each important file does.
 | `runs/` | Agentic research run outputs. |
 | `eval_runs/` | Created when eval harness runs; not necessarily present until generated. |
 | `rag_exports/` | Created by corpus sync exports; not necessarily present until generated. |
-

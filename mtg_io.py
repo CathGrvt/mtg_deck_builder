@@ -1,9 +1,11 @@
-import ast
 import os
 import re
-from typing import Any, Dict, Iterable, List
+from typing import Dict, Iterable, List
 
 import pandas as pd
+
+from mtg_shared.deck_utils import normalize_card_name as _normalize_card_name
+from mtg_shared.deck_utils import safe_parse_list as _safe_parse_list
 
 
 SECTION_ALIASES = {
@@ -20,54 +22,11 @@ CARD_LINE_RE = re.compile(
 
 
 def normalize_card_name(card_name: str) -> str:
-    """
-    Normalize card name by standardizing single slash to double slash format.
-    """
-    if not card_name:
-        return ""
-    if "/" in card_name and "//" not in card_name:
-        parts = card_name.split("/")
-        if len(parts) == 2:
-            return f"{parts[0].strip()} // {parts[1].strip()}"
-    return card_name
+    return _normalize_card_name(card_name)
 
 
-def safe_parse_list(value: Any) -> List[str]:
-    """
-    Safely parse list-like values loaded from CSV fields.
-    """
-    if value is None or pd.isna(value):
-        return []
-    if isinstance(value, list):
-        return value
-    if isinstance(value, tuple):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return []
-        if text.startswith("[") and text.endswith("]"):
-            try:
-                parsed = ast.literal_eval(text)
-                if isinstance(parsed, list):
-                    return [str(item).strip() for item in parsed if str(item).strip()]
-                if isinstance(parsed, tuple):
-                    return [str(item).strip() for item in parsed if str(item).strip()]
-            except (SyntaxError, ValueError):
-                pass
-
-            # Fallback parser for malformed list-ish strings.
-            inner = text[1:-1].strip()
-            if not inner:
-                return []
-            items = []
-            for item in inner.split(","):
-                cleaned = item.strip().strip("'\"")
-                if cleaned:
-                    items.append(cleaned)
-            return items
-        return [text]
-    return []
+def safe_parse_list(value) -> List[str]:
+    return _safe_parse_list(value)
 
 
 def parse_decklist_lines(lines: Iterable[str]) -> Dict[str, List[str]]:

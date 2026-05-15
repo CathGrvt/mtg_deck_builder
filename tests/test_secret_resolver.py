@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from research_pipeline.secret_resolver import _SECRET_CACHE, resolve_openai_api_key
+from mtg_shared.secrets import _SECRET_CACHE, resolve_openai_api_key
 
 
 class SecretResolverTests(unittest.TestCase):
@@ -34,7 +34,7 @@ class SecretResolverTests(unittest.TestCase):
             clear=False,
         ):
             with patch(
-                "research_pipeline.secret_resolver._access_secret_version",
+                "mtg_shared.secrets._access_secret_version",
                 return_value="sk-secret",
             ) as mocked:
                 first = resolve_openai_api_key(api_key_env="OPENAI_API_KEY")

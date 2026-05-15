@@ -1,35 +1,33 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import List, Sequence
 
 from gcp_agent_runtime.contracts import DeckRecommendationRequest, RetrievalPlan
+from mtg_shared.text import keyword_tokens
 
 
 def _keyword_tokens(text: str) -> List[str]:
-    stopwords = {
-        "the",
-        "and",
-        "for",
-        "with",
-        "that",
-        "this",
-        "from",
-        "what",
-        "which",
-        "where",
-        "when",
-        "deck",
-        "cards",
-        "commander",
-        "mtg",
-    }
-    return [
-        token
-        for token in re.findall(r"[a-zA-Z0-9']+", str(text).lower())
-        if len(token) >= 4 and token not in stopwords
-    ]
+    return keyword_tokens(
+        text,
+        stopwords={
+            "the",
+            "and",
+            "for",
+            "with",
+            "that",
+            "this",
+            "from",
+            "what",
+            "which",
+            "where",
+            "when",
+            "deck",
+            "cards",
+            "commander",
+            "mtg",
+        },
+    )
 
 
 @dataclass

@@ -7,9 +7,9 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
+from mtg_shared.openai_api import extract_first_message_content, post_openai_chat_completions
 import numpy as np
 import pandas as pd
-import requests
 
 from deck_analysis import COMMANDER_DUPLICATE_EXCEPTIONS
 from mtg_io import load_card_database, load_decklists_from_directory, safe_parse_list
@@ -525,36 +525,18 @@ def score_cards_with_llm(
     }
     user_prompt = json.dumps(user_payload, ensure_ascii=False)
 
-    url = llm_config.base_url.rstrip("/") + "/chat/completions"
-    body = {
-        "model": llm_config.model,
-        "temperature": 0.0,
-        "messages": [
+    payload = post_openai_chat_completions(
+        api_key=api_key,
+        model=llm_config.model,
+        base_url=llm_config.base_url,
+        timeout_sec=llm_config.timeout_sec,
+        temperature=0.0,
+        messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-    }
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-
-    response = requests.post(
-        url,
-        headers=headers,
-        json=body,
-        timeout=llm_config.timeout_sec,
     )
-    response.raise_for_status()
-
-    data = response.json()
-    content = ""
-    choices = data.get("choices")
-    if isinstance(choices, list) and choices:
-        message = choices[0].get("message", {})
-        if isinstance(message, dict):
-            content = str(message.get("content", "")).strip()
-
+    content = extract_first_message_content(payload, empty_message="")
     return _extract_json_scores(content)
 
 

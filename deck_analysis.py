@@ -112,7 +112,6 @@ class AdvancedDeckAnalyzer:
         # Check if this is a split/dual-faced card by looking at the full_name
         if pd.notna(card['full_name']) and ' // ' in card['full_name']:
             # This is a split card - we need to find the back face oracle text
-            card_name = card['name']
             full_name = card['full_name']
             
             # Extract the back face name
@@ -144,7 +143,7 @@ class AdvancedDeckAnalyzer:
         }
         
         # Check card type mechanics
-        if card['is_creature'] == True:
+        if pd.notna(card['is_creature']) and bool(card['is_creature']):
             mechanics['creature'] += 1
             
             # Power-based mechanics
@@ -307,13 +306,15 @@ class AdvancedDeckAnalyzer:
         Calculate comprehensive deck statistics
         """
         # Improved boolean filtering
-        nonland_cards = deck_cards[deck_cards['is_land'] != True]
-        land_cards = deck_cards[deck_cards['is_land'] == True]
+        is_land_mask = deck_cards['is_land'].fillna(False).astype(bool)
+        nonland_cards = deck_cards[~is_land_mask]
+        land_cards = deck_cards[is_land_mask]
         total_cards = len(decklist)
         
         land_total = sum(self._get_card_count(name) for name in land_cards['name'])
         nonland_total = max(total_cards - land_total, 0)
-        creature_total = sum(self._get_card_count(name) for name in nonland_cards[nonland_cards['is_creature'] == True]['name'])
+        creature_mask = nonland_cards['is_creature'].fillna(False).astype(bool)
+        creature_total = sum(self._get_card_count(name) for name in nonland_cards[creature_mask]['name'])
         
         cmc_samples = []
         for _, card in nonland_cards.iterrows():
@@ -701,7 +702,6 @@ def analyze_deck(cards_df: pd.DataFrame, decklist_path: str):
         raise ValueError("Error loading decklist: {}".format(e))
     
     mainboard = sections.get('mainboard', [])
-    sideboard = sections.get('sideboard', [])
     commanders = sections.get('commanders', [])
     companions = sections.get('companions', [])
     

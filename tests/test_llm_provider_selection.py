@@ -40,7 +40,7 @@ class LLMProviderSelectionTests(unittest.TestCase):
             },
             clear=False,
         ):
-            with patch("research_pipeline.secret_resolver._access_secret_version", return_value="sk-secret"):
+            with patch("mtg_shared.secrets._access_secret_version", return_value="sk-secret"):
                 llm = build_default_llm(provider="openai", api_key_env="OPENAI_API_KEY")
         self.assertIsInstance(llm, OpenAIChatLLM)
 

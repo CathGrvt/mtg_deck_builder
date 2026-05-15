@@ -5,6 +5,9 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict
 
+from mtg_shared.env import parse_int_value
+from mtg_shared.runtime_env import runtime_env_default
+
 
 @dataclass
 class VertexAgentEngineConfig:
@@ -17,9 +20,22 @@ class VertexAgentEngineConfig:
     def from_env(cls) -> "VertexAgentEngineConfig":
         return cls(
             resource_name=os.getenv("MTG_VERTEX_AGENT_ENGINE_RESOURCE", "").strip(),
-            timeout_sec=max(5, int(os.getenv("MTG_VERTEX_AGENT_ENGINE_TIMEOUT_SEC", "60"))),
+            timeout_sec=parse_int_value(
+                os.getenv(
+                    "MTG_VERTEX_AGENT_ENGINE_TIMEOUT_SEC",
+                    runtime_env_default("MTG_VERTEX_AGENT_ENGINE_TIMEOUT_SEC", "60"),
+                ),
+                default=int(runtime_env_default("MTG_VERTEX_AGENT_ENGINE_TIMEOUT_SEC", "60")),
+                minimum=5,
+            ),
             project=os.getenv("GOOGLE_CLOUD_PROJECT", "").strip(),
-            location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1").strip() or "us-central1",
+            location=(
+                os.getenv(
+                    "GOOGLE_CLOUD_LOCATION",
+                    runtime_env_default("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                ).strip()
+                or runtime_env_default("GOOGLE_CLOUD_LOCATION", "us-central1")
+            ),
         )
 
 

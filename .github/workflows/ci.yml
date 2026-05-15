@@ -34,5 +34,32 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Vulture dead code check
+        run: |
+          vulture \
+            mtg_shared \
+            gcp_agent_runtime \
+            research_pipeline \
+            mtg_ui_app \
+            ai_deck_generator.py \
+            archidekt_deck_list_scraper.py \
+            current_standard_deck_list_scraper.py \
+            deck_analysis.py \
+            deck_corpus_builder.py \
+            deploy_agent_engine.py \
+            fetch_standard_legal_cards.py \
+            mtg_io.py \
+            run_backend_adapter.py \
+            run_research_eval.py \
+            run_research_pipeline.py \
+            sync_rag_corpus.py \
+            train_deck_generator.py \
+            ui_helpers.py \
+            tests/vulture_whitelist.py \
+            --min-confidence 100
+
       - name: Run tests
-        run: pytest -q
+        run: PYTHONPATH=. pytest -q

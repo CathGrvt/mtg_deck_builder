@@ -139,7 +139,10 @@ Repository variables:
 - `GCP_UI_SERVICE` (default: `mtg-ui`)
 - `GCP_BACKEND_RUNTIME_SERVICE_ACCOUNT` (recommended)
 - `GCP_UI_RUNTIME_SERVICE_ACCOUNT` (recommended)
+- `MTG_OPENAI_API_KEY_ENV` (default: `OPENAI_API_KEY`)
+- `MTG_OPENAI_BASE_URL` (default: `https://api.openai.com/v1`)
 - `MTG_OPENAI_API_KEY_SECRET_RESOURCE` (`projects/<project>/secrets/<name>`)
+- `MTG_OPENAI_API_KEY_SECRET` (optional shorthand secret ref)
 
 Repository secrets:
 

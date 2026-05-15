@@ -10,29 +10,10 @@ from gcp_agent_runtime.contracts import SafetyVerdict
 from gcp_agent_runtime.llm_provider import LLMProviderRuntime, build_rule_based_chat_answer
 from gcp_agent_runtime.retrieval import LocalHybridRetrieverClient, LocalRetrieverConfig
 from gcp_agent_runtime.safety import SafetyGateAgent
+from mtg_shared.env import parse_bool_value, parse_int_value
+from mtg_shared.runtime_env import runtime_env_default
 from research_pipeline.graph import ResearchPipeline
 from research_pipeline.models import RetrievedChunk
-
-
-def _bool_value(value: Any, default: bool = False) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    lowered = str(value).strip().lower()
-    if lowered in {"1", "true", "yes", "on"}:
-        return True
-    if lowered in {"0", "false", "no", "off"}:
-        return False
-    return default
-
-
-def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        parsed = default
-    return max(minimum, min(maximum, parsed))
 
 
 def _merge_safety(primary: SafetyVerdict, secondary: SafetyVerdict) -> SafetyVerdict:
@@ -152,14 +133,14 @@ class ResearchBackendService:
         if not topic:
             raise ValueError("topic is required.")
 
-        max_iterations = _bounded_int(payload.get("max_iterations"), default=3, minimum=1, maximum=8)
-        max_questions = _bounded_int(payload.get("max_questions"), default=5, minimum=1, maximum=12)
-        top_k_per_query = _bounded_int(payload.get("top_k_per_query"), default=5, minimum=1, maximum=20)
-        enable_semantic = _bool_value(
+        max_iterations = parse_int_value(payload.get("max_iterations"), default=3, minimum=1, maximum=8)
+        max_questions = parse_int_value(payload.get("max_questions"), default=5, minimum=1, maximum=12)
+        top_k_per_query = parse_int_value(payload.get("top_k_per_query"), default=5, minimum=1, maximum=20)
+        enable_semantic = parse_bool_value(
             payload.get("enable_semantic"),
             default=bool(self.retriever_client.config.enable_semantic),
         )
-        use_langgraph = _bool_value(payload.get("use_langgraph"), default=True)
+        use_langgraph = parse_bool_value(payload.get("use_langgraph"), default=True)
 
         started = time.perf_counter()
         trace_id = f"trace-{uuid.uuid4().hex[:12]}"
@@ -264,18 +245,27 @@ class ChatBackendService:
         if not question:
             raise ValueError("question is required.")
 
-        top_k = _bounded_int(payload.get("top_k"), default=6, minimum=1, maximum=20)
+        top_k = parse_int_value(payload.get("top_k"), default=6, minimum=1, maximum=20)
         history = _history_items(payload.get("history", []))
         if "enable_clarification" in payload:
-            enable_clarification = _bool_value(payload.get("enable_clarification"), default=True)
+            enable_clarification = parse_bool_value(payload.get("enable_clarification"), default=True)
         else:
-            enable_clarification = _bool_value(
-                value=os.getenv("MTG_CHAT_ENABLE_CLARIFICATION", "true"),
+            enable_clarification = parse_bool_value(
+                value=os.getenv(
+                    "MTG_CHAT_ENABLE_CLARIFICATION",
+                    runtime_env_default("MTG_CHAT_ENABLE_CLARIFICATION", "true"),
+                ),
                 default=True,
             )
-        max_clarification_turns = _bounded_int(
-            payload.get("max_clarification_turns", os.getenv("MTG_CHAT_MAX_CLARIFICATION_TURNS", "1")),
-            default=1,
+        max_clarification_turns = parse_int_value(
+            payload.get(
+                "max_clarification_turns",
+                os.getenv(
+                    "MTG_CHAT_MAX_CLARIFICATION_TURNS",
+                    runtime_env_default("MTG_CHAT_MAX_CLARIFICATION_TURNS", "1"),
+                ),
+            ),
+            default=int(runtime_env_default("MTG_CHAT_MAX_CLARIFICATION_TURNS", "1")),
             minimum=0,
             maximum=3,
         )

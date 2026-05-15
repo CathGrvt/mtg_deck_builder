@@ -78,28 +78,6 @@ flowchart LR
 - **[`current_standard_deck_list_scraper.py`]**  
   Scrapes the latest Commander (or other format) deck lists from MTGGoldfish's metagame page. Allows filtering by minimum meta percentage, saves deck lists (with preserved Commander/Deck headers) as text files for analysis, and exports meta representation data as JSON. Use `--format commander` (default) or swap formats as needed.
 
-- **[`analyze_meta_old_try_to_parse.py`]**  
-  The first meta analysis script that uses rule-based pattern matching to identify mechanics and synergies. It parses oracle text using predefined regex patterns to detect card interactions, with special handling for Room-type enchantments. While comprehensive, its accuracy depends on the quality of the predefined patterns. It can misclassify complex interactions or miss new mechanics that don't match its patterns.
-
-- **[`analyze_meta_using_keywords.py`]**  
-  A statistical approach that analyzes card data directly without assumptions about interactions. It dynamically extracts types, subtypes, keywords, and references from the card pool to identify patterns. This approach offers more reliable results when the card pool changes, as it doesn't rely on hardcoded patterns. It excels at providing objective meta statistics but offers less insight into complex card interactions.
-
-- **[`semantics_meta_analysis.py`]**  
-  The newest script that implements machine learning and semantic analysis. It uses a pre-trained sentence transformer model to generate embeddings for cards based on their oracle text. It then applies clustering techniques to identify similar cards and decks without relying on predefined patterns. This approach can discover nuanced relationships and emergent themes that might be missed by rule-based systems, though the identified similarities may sometimes lack clear explanation since the model isn't specifically trained on Magic terminology.
-
-- **[`integrated_deck_name_analyzer.py`]**  
-  A sophisticated module that enhances meta analysis by extracting meaningful information from deck names. It dynamically identifies color identities, archetypes, card types, subtypes, and mechanics referenced in deck names without relying on hardcoded patterns. The analyzer can:
-  - Extract and normalize card-related terminology from deck names
-  - Process compound terms (like "self-bounce") as semantic units
-  - Match terms against actual cards in the deck for more precise analysis
-  - Perform cross-deck analysis to identify shared themes and synergies
-  - Enhance archetype detection by incorporating deck name insights
-  - Use TF-IDF to extract relevant terms from oracle texts of common cards
-  This analysis adds another layer of insight to understand how the community names and categorizes decks, revealing conceptual connections between different archetypes and strategies.
-
-- **[`consolidated_meta_analysis.py`]**  
-  Combines the outputs from all three meta analysis approaches (pattern-based, keyword-based, and semantic) to generate a comprehensive meta report. It reconciles potentially conflicting information from different analysis methods, extracts the most reliable insights from each, and produces a unified view of the metagame including archetype distributions, card type trends, color combinations, and synergy clusters.
-
 - **[`ai_deck_generator.py`]**  
   A first-pass, meta-driven **deck generator**. It uses the same card database and scraped decklists as the analysis scripts, building simple frequency statistics over the existing meta. Given a requested format, color identity, and optional archetype hint, it produces a complete decklist by:
   - Filtering the card pool by color identity and basic Commander/constructed rules  
@@ -107,26 +85,13 @@ flowchart LR
   - Enforcing approximate land ratios and copy limits (Commander singleton vs. 4-of)  
   This module is intentionally simple and model-agnostic so it can later be upgraded to use neural generators and semantic embeddings while keeping the same `DeckSpec` interface.
 
-- **[`consolidated_meta_analysis.py`]**  
-  Combines the outputs from all three meta analysis approaches (pattern-based, keyword-based, and semantic) to generate a comprehensive meta report. It reconciles potentially conflicting information from different analysis methods, extracts the most reliable insights from each, and produces a unified view of the metagame including archetype distributions, card type trends, color combinations, and synergy clusters.
-
-All meta analysis scripts are maintained in the repository as they provide complementary insights for different purposes. Use the pattern-matching approach for detailed mechanic breakdowns, the keyword-based approach for reliable statistical analysis, the semantic approach for discovering unexpected card relationships, and the deck name analyzer for understanding deck conceptualization and community categorization.
-
 ## Key Features
 1. **Scryfall Integration**  
    Automatically pulls the latest **Commander**-legal cards (or any supported format via `--format`), ensuring the model is always up-to-date.
 2. **Deck Archetype Analysis**  
-   Categorizes decks into established archetypes (Aggro, Midrange, Control, Tempo, Combo) using multiple approaches:
-   - Statistical analysis of card distributions
-   - Pattern matching on card mechanics
-   - Semantic similarity clustering
-   - Deck name terminology analysis
+   Categorizes decks into established archetypes (Aggro, Midrange, Control, Tempo, Combo) using deck composition and mechanic signals in `deck_analysis.py`.
 3. **Meta Analysis**  
-   Multiple approaches to analyze the metagame:
-   - Pattern-based mechanic and synergy detection
-   - Statistical keyword and type analysis
-   - Machine learning-based semantic analysis
-   - Community naming convention analysis
+   Uses scraped decklists and retrieval pipelines (`research_pipeline/`) for evidence-grounded summaries and recommendations.
 4. **Unsupervised Learning Potential**  
    Plans to integrate an AI model that **auto-generates** decklists—unconstrained by conventional archetype thinking.
 
@@ -181,7 +146,8 @@ This repo now includes a deployable GCP runtime package under `gcp_agent_runtime
 - Env-selectable backend mode (`MTG_BACKEND_MODE=local|vertex`) with optional local fallback (`MTG_VERTEX_FALLBACK_TO_LOCAL=true`)
 - Optional Vertex proxy for research/chat (`MTG_VERTEX_PROXY_RESEARCH=true`, `MTG_VERTEX_PROXY_CHAT=true`)
 - Env-selectable research/chat LLM provider (`MTG_LLM_PROVIDER=openai|vertex|rule`)
-- Optional Secret Manager key resolution (`MTG_OPENAI_API_KEY_SECRET_RESOURCE=projects/.../secrets/...`)
+- Configurable OpenAI env wiring (`MTG_OPENAI_API_KEY_ENV`, `MTG_OPENAI_BASE_URL`)
+- Optional Secret Manager key resolution (`MTG_OPENAI_API_KEY_SECRET_RESOURCE` or `MTG_OPENAI_API_KEY_SECRET`)
 - Clarification-capable chat responses (`MTG_CHAT_ENABLE_CLARIFICATION=true`, `MTG_CHAT_MAX_CLARIFICATION_TURNS=1`)
 
 For deployment and governance details, see:
@@ -244,31 +210,17 @@ To analyze a single deck list, place your deck in a `.txt` file (Commander secti
 python deck_analysis.py /path/to/decklist.txt --cards data/commander_cards.csv
 ```
 
-### 4. Analyze the Meta
-You can use any of the meta analysis scripts based on your needs:
+### 4. Run Agentic Research
+Generate grounded research reports from local corpus data:
+
 ```bash
-# For rule-based pattern matching (comprehensive but potentially less accurate):
-python analyze_meta_old_try_to_parse.py --cards data/commander_cards.csv --decks current_commander_decks
-
-# For statistical keyword-based analysis (more reliable but less insightful):
-python analyze_meta_using_keywords.py --cards data/commander_cards.csv --decks current_commander_decks
-
-# For semantic analysis using machine learning (discovers nuanced relationships):
-python semantics_meta_analysis.py --cards data/commander_cards.csv --decks current_commander_decks
-
-# For enhanced semantic analysis with deck name analysis:
-python integrated_deck_name_analyzer.py --cards data/commander_cards.csv --decks current_commander_decks
+python run_research_pipeline.py \
+  "What interaction package sizes are common in commander?" \
+  --cards data/commander_cards.csv \
+  --decks current_commander_decks
 ```
 
-### 5. Generate Consolidated Meta Report
-Combine insights from all meta analysis approaches:
-```bash
-python consolidated_meta_analysis.py
-```
-
-Each script will generate its own analysis output file and display a summary report in the console.
-
-### 6. Build an Efficient Deck Corpus and Train Clusters
+### 5. Build an Efficient Deck Corpus and Train Clusters
 
 For larger datasets, build the training corpus using a sparse CSR matrix (more memory-efficient than dense arrays):
 
@@ -297,7 +249,7 @@ This now trains a hybrid model:
 
 The corpus metadata (`<prefix>_meta.json`) includes quality stats such as coverage ratio, unknown-card count, and matrix density.
 
-### 7. Generate a Deck with the Baseline AI Generator
+### 6. Generate a Deck with the Baseline AI Generator
 
 Once you have a card database and a directory of example decklists (Commander or another format), you can ask the generator to produce a new list:
 
@@ -364,7 +316,7 @@ Deck
 
 If you're analyzing a non-Commander list, you can still split the mainboard and sideboard with a blank line—the parser will continue to recognize both layouts.
 
-### 8. Run the Agentic Research Pipeline (Planner → Retriever → Critic → Writer)
+### 7. Run the Agentic Research Pipeline (Planner → Retriever → Critic → Writer)
 
 The repository now includes a production-style research pipeline under `research_pipeline/`:
 
@@ -388,7 +340,7 @@ This creates a timestamped folder in `runs/` with:
 - `state.json` (full pipeline state)
 - `trace.jsonl` (observability trace)
 
-### 9. Run the Eval Harness (Faithfulness, Groundedness, Citation Accuracy)
+### 8. Run the Eval Harness (Faithfulness, Groundedness, Citation Accuracy)
 
 An eval harness is included in `research_pipeline/eval/` with a starter dataset at `eval/topics.jsonl`.
 
@@ -404,15 +356,6 @@ Each eval run writes artifacts into `eval_runs/<timestamp>/`:
 - `summary.md` (aggregate metrics and failure breakdown)
 - `failure_analysis.md` (categorized failure analysis + suggested fixes)
 - `trace.jsonl` (execution trace for debugging regressions)
-
-## Comparison of Meta Analysis Approaches
-
-| Feature | Pattern-Based | Keyword-Based | Semantic Analysis | Deck Name Analysis |
-|---------|--------------|---------------|-------------------|-------------------|
-| **Approach** | Rule-based with regex patterns | Statistical analysis of card data | Machine learning with text embeddings | NLP-based terminology extraction |
-| **Strengths** | Detailed mechanic breakdown<br>Synergy identification<br>Room card handling | Reliable with changing card pools<br>Objective meta statistics<br>No assumptions needed | Discovers nuanced relationships<br>Finds emergent themes<br>Not limited by predefined patterns | Reveals community categorization<br>Cross-deck theme identification<br>Enhances archetype detection |
-| **Limitations** | May miss new mechanics<br>Pattern accuracy depends on rules<br>Less adaptable | Less insight into card interactions<br>Limited synergy detection<br>More descriptive than analytical | Less interpretable results<br>Model not trained on Magic terminology<br>Requires additional dependencies | Depends on naming conventions<br>May miss concepts not in names<br>Requires accurate card data matching |
-| **Best For** | Mechanic & synergy analysis<br>Room card interactions<br>Detailed breakdown | Objective meta statistics<br>Format speed analysis<br>Reliable archetype detection | Discovering unexpected relationships<br>Deck clustering<br>Finding hidden patterns | Understanding meta conceptualization<br>Cross-archetype connections<br>Community terminology analysis |
 
 ## Roadmap
 - **Enhance Archetype Logic**  

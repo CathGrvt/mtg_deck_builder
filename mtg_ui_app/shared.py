@@ -8,19 +8,20 @@ import subprocess
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from mtg_shared.openai_api import chat_completion_content
+from mtg_shared.text import dedupe_preserving_order, keyword_tokens
 import pandas as pd
-import requests
 import streamlit as st
 from sklearn.metrics.pairwise import cosine_similarity
 
 from mtg_io import load_card_database, load_decklists_from_directory
+from mtg_ui_app.backend_client import call_backend_json
 from research_pipeline.llm import RuleBasedLLM
 from research_pipeline.models import RetrievedChunk
 from research_pipeline.reporting import report_to_markdown
 from research_pipeline.retrieval.corpus import build_domain_corpus
 from research_pipeline.retrieval.index import HybridRetrievalIndex
 from research_pipeline.set_aliases import extract_set_codes_from_text
-from mtg_ui_app.backend_client import call_backend_json
 
 
 @st.cache_data(show_spinner=False)
@@ -194,28 +195,15 @@ def _call_openai_chat_completion(
     api_key = os.getenv(api_key_env, "")
     if not api_key:
         raise ValueError(f"Environment variable '{api_key_env}' is not set.")
-
-    response = requests.post(
-        base_url.rstrip("/") + "/chat/completions",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": model,
-            "temperature": float(temperature),
-            "messages": list(messages),
-        },
-        timeout=max(5, int(timeout_sec)),
+    return chat_completion_content(
+        api_key=api_key,
+        model=model,
+        base_url=base_url,
+        timeout_sec=timeout_sec,
+        temperature=float(temperature),
+        messages=messages,
+        empty_message="No response was returned by the model.",
     )
-    response.raise_for_status()
-    payload = response.json()
-    choices = payload.get("choices") or []
-    if not choices:
-        return "No response was returned by the model."
-
-    message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
-    return str(message.get("content", "")).strip()
 
 
 def _augment_with_set_filtered_cards(
@@ -271,43 +259,34 @@ def _augment_with_set_filtered_cards(
 
 
 def _extract_focus_terms(text: str) -> List[str]:
-    stopwords = {
-        "the",
-        "and",
-        "for",
-        "with",
-        "that",
-        "this",
-        "from",
-        "into",
-        "your",
-        "their",
-        "about",
-        "what",
-        "which",
-        "when",
-        "where",
-        "how",
-        "why",
-        "some",
-        "good",
-        "cards",
-        "commander",
-        "deck",
-    }
-    tokens = [
-        token
-        for token in re.findall(r"[a-zA-Z0-9']+", text.lower())
-        if len(token) >= 4 and token not in stopwords
-    ]
-    seen = set()
-    deduped = []
-    for token in tokens:
-        if token in seen:
-            continue
-        seen.add(token)
-        deduped.append(token)
-    return deduped[:8]
+    tokens = keyword_tokens(
+        text,
+        stopwords={
+            "the",
+            "and",
+            "for",
+            "with",
+            "that",
+            "this",
+            "from",
+            "into",
+            "your",
+            "their",
+            "about",
+            "what",
+            "which",
+            "when",
+            "where",
+            "how",
+            "why",
+            "some",
+            "good",
+            "cards",
+            "commander",
+            "deck",
+        },
+    )
+    return dedupe_preserving_order(tokens)[:8]
 
 
 def _find_explicit_card_mentions(index: HybridRetrievalIndex, question: str) -> List[RetrievedChunk]:
