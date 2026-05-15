@@ -1,0 +1,29 @@
+{
+  "run_date_utc": "2026-05-15T12:41:59Z",
+  "run_dir": "eval_runs/20260515T124159Z",
+  "dataset": "eval/topics.jsonl",
+  "cases": 24,
+  "llm_provider": "rule",
+  "semantic_retrieval_enabled": false,
+  "command": "PYTHONPATH=. MTG_LLM_PROVIDER=rule ./.venv/bin/python run_research_eval.py --dataset eval/topics.jsonl --cards data/commander_cards.csv --decks current_commander_decks --disable-semantic",
+  "metrics": {
+    "mean_groundedness": 0.825,
+    "mean_faithfulness": 0.1375,
+    "mean_citation_precision": 1.0
+  },
+  "failure_breakdown": {
+    "ok": 23,
+    "hallucinated_claim": 1
+  },
+  "release_gate": {
+    "thresholds": {
+      "groundedness_min": 0.65,
+      "faithfulness_min": 0.2,
+      "citation_precision_min": 0.7
+    },
+    "pass_groundedness": true,
+    "pass_faithfulness": false,
+    "pass_citation_precision": true,
+    "gate_pass": false
+  }
+}

@@ -40,6 +40,18 @@ Artifacts are written to `eval_runs/<timestamp>/`:
 - `failure_analysis.md`
 - `trace.jsonl`
 
+## Latest Published Baseline
+
+A committed benchmark snapshot is available at:
+
+- `eval/benchmarks/2026-05-15_rule_lexical.json`
+
+Metrics from that run:
+
+- Mean groundedness: `0.8250`
+- Mean faithfulness: `0.1375`
+- Mean citation precision: `1.0000`
+
 ## Failure Analysis Writeup Template
 
 Use this template after each eval run to keep iteration history interview-ready:
