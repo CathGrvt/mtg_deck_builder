@@ -9,7 +9,7 @@ from research_pipeline.eval.metrics import classify_failure, evaluate_report
 class EvalMetricsTests(unittest.TestCase):
     def test_metrics_detect_valid_citations(self):
         report = {
-            "topic": "Example",
+            "topic": "How efficient is Lightning Bolt as interaction in red decks?",
             "summary": "Summary",
             "claims": [
                 {
@@ -41,9 +41,44 @@ class EvalMetricsTests(unittest.TestCase):
         self.assertEqual(metrics["claim_count"], 1)
         self.assertEqual(metrics["valid_citations"], 1)
         self.assertGreater(metrics["citation_precision"], 0.0)
+        self.assertGreater(metrics["topic_relevance"], 0.0)
 
         failure_type, _ = classify_failure(metrics)
         self.assertEqual(failure_type, "ok")
+
+    def test_failure_classifies_off_topic_claims(self):
+        report = {
+            "topic": "How much graveyard hate should commander decks run?",
+            "summary": "Summary",
+            "claims": [
+                {
+                    "claim": "Oracle text: target creature gets +3/+3 until end of turn.",
+                    "citations": [
+                        {
+                            "doc_id": "card::giant-growth",
+                            "chunk_id": "card::giant-growth::chunk-000",
+                        }
+                    ],
+                    "confidence": 0.6,
+                }
+            ],
+            "open_questions": [],
+        }
+        retrieved_chunks = [
+            {
+                "doc_id": "card::giant-growth",
+                "chunk_id": "card::giant-growth::chunk-000",
+                "source": "card_db",
+                "title": "Giant Growth",
+                "text": "Oracle text: target creature gets +3/+3 until end of turn.",
+                "score": 0.9,
+                "metadata": {},
+            }
+        ]
+
+        metrics = evaluate_report(report, retrieved_chunks)
+        failure_type, _ = classify_failure(metrics)
+        self.assertEqual(failure_type, "off_topic_claim")
 
     def test_dataset_loader_jsonl(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

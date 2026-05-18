@@ -44,13 +44,16 @@ Artifacts are written to `eval_runs/<timestamp>/`:
 
 A committed benchmark snapshot is available at:
 
-- `eval/benchmarks/2026-05-15_rule_lexical.json`
+- `eval/benchmarks/2026-05-15_rule_lexical_topic_guarded.json`
 
 Metrics from that run:
 
-- Mean groundedness: `0.8250`
-- Mean faithfulness: `0.1375`
-- Mean citation precision: `1.0000`
+- Mean groundedness: `0.9167`
+- Mean faithfulness: `0.2148`
+- Mean topic relevance: `0.2148`
+- Mean citation precision: `0.9167`
+
+Note: faithfulness scoring uses evidence support (best span overlap) multiplied by topic alignment, which prevents perfect scores from pure span-copy behavior. The prior `eval/benchmarks/2026-05-15_rule_lexical_span_scoring.json` snapshot is kept for history but is superseded.
 
 ## Failure Analysis Writeup Template
 
@@ -67,12 +70,14 @@ Use this template after each eval run to keep iteration history interview-ready:
 ## Aggregate Metrics
 - Mean groundedness: <value>
 - Mean faithfulness: <value>
+- Mean topic relevance: <value>
 - Mean citation precision: <value>
 
 ## Failures by Type
 - retrieval_miss: <count>
 - bad_citation: <count>
 - hallucinated_claim: <count>
+- off_topic_claim: <count>
 
 ## Top Failure Clusters
 1. <cluster name> - <count> cases
@@ -86,5 +91,6 @@ Use this template after each eval run to keep iteration history interview-ready:
 ## Before/After (if rerun)
 - groundedness: <before> -> <after>
 - faithfulness: <before> -> <after>
+- topic relevance: <before> -> <after>
 - citation precision: <before> -> <after>
 ```

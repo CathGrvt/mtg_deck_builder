@@ -44,8 +44,8 @@ flowchart LR
   - `summary.md`
   - `failure_analysis.md`
   - `trace.jsonl`
-- Failure taxonomy includes: `retrieval_miss`, `bad_citation`, `hallucinated_claim`.
-- Published benchmark snapshots are tracked in `eval/benchmarks/` (latest: `2026-05-15_rule_lexical.json`).
+- Failure taxonomy includes: `retrieval_miss`, `bad_citation`, `hallucinated_claim`, `off_topic_claim`.
+- Published benchmark snapshots are tracked in `eval/benchmarks/` (latest: `2026-05-15_rule_lexical_topic_guarded.json`).
 
 ### Runtime Modes (No API Key vs API Key)
 | Capability | No `OPENAI_API_KEY` | With `OPENAI_API_KEY` |

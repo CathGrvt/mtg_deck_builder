@@ -60,6 +60,7 @@ def _render_summary(rows: List[Dict[str, Any]]) -> str:
 
     groundedness = [float(row["metrics"]["groundedness"]) for row in rows]
     faithfulness = [float(row["metrics"]["faithfulness"]) for row in rows]
+    topic_relevance = [float(row["metrics"].get("topic_relevance", 0.0)) for row in rows]
     citation_precision = [float(row["metrics"]["citation_precision"]) for row in rows]
 
     failure_counts: Dict[str, int] = {}
@@ -73,6 +74,7 @@ def _render_summary(rows: List[Dict[str, Any]]) -> str:
         f"Cases: {len(rows)}",
         f"Mean groundedness: {mean(groundedness):.4f}",
         f"Mean faithfulness: {mean(faithfulness):.4f}",
+        f"Mean topic relevance: {mean(topic_relevance):.4f}",
         f"Mean citation precision: {mean(citation_precision):.4f}",
         "",
         "## Failure Breakdown",
@@ -85,9 +87,9 @@ def _render_summary(rows: List[Dict[str, Any]]) -> str:
 
     for row in rows:
         lines.append(
-            "- "
-            f"{row['case_id']}: groundedness={row['metrics']['groundedness']:.4f}, "
+            f"- {row['case_id']}: groundedness={row['metrics']['groundedness']:.4f}, "
             f"faithfulness={row['metrics']['faithfulness']:.4f}, "
+            f"topic_relevance={row['metrics'].get('topic_relevance', 0.0):.4f}, "
             f"citation_precision={row['metrics']['citation_precision']:.4f}, "
             f"failure={row['failure']['type']}"
         )
@@ -116,6 +118,7 @@ def _render_failure_analysis(rows: List[Dict[str, Any]]) -> str:
                 f"- Why: {row['failure']['reason']}",
                 f"- Groundedness: {row['metrics']['groundedness']:.4f}",
                 f"- Faithfulness: {row['metrics']['faithfulness']:.4f}",
+                f"- Topic relevance: {row['metrics'].get('topic_relevance', 0.0):.4f}",
                 f"- Citation precision: {row['metrics']['citation_precision']:.4f}",
                 "- Suggested fix:",
             ]
@@ -128,6 +131,8 @@ def _render_failure_analysis(rows: List[Dict[str, Any]]) -> str:
             lines.append("  Add stricter citation validation in writer and retry before final output.")
         elif failure_type == "hallucinated_claim":
             lines.append("  Lower writer abstraction and force shorter evidence-linked claims.")
+        elif failure_type == "off_topic_claim":
+            lines.append("  Tighten topic filtering in writer and retrieval query focus.")
         else:
             lines.append("  Inspect trace logs to identify node-level regressions.")
 

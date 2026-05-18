@@ -5,7 +5,7 @@ This project includes a generated failure-analysis artifact in every eval run (`
 ## What to inspect
 
 - `results.jsonl`: per-case metrics and the produced report.
-- `summary.md`: aggregate groundedness, faithfulness, citation precision.
+- `summary.md`: aggregate groundedness, faithfulness, topic relevance, citation precision.
 - `failure_analysis.md`: categorized failure types and suggested remediations.
 - `trace.jsonl`: node-level execution trace (`planner`, `retriever`, `critic`, `writer`, `validator`).
 
@@ -14,6 +14,7 @@ This project includes a generated failure-analysis artifact in every eval run (`
 - `retrieval_miss`: retrieval context does not cover produced claims.
 - `bad_citation`: missing or invalid citation bindings.
 - `hallucinated_claim`: weak textual support from cited evidence.
+- `off_topic_claim`: claims are evidence-supported but not aligned to the question topic.
 
 ## Suggested analysis loop
 

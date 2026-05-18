@@ -1,0 +1,57 @@
+{
+  "run_date_utc": "2026-05-18T12:17:08Z",
+  "run_dir": "eval_runs/20260518T121708Z",
+  "dataset": "eval/topics.jsonl",
+  "cases": 24,
+  "llm_provider": "rule",
+  "semantic_retrieval_enabled": false,
+  "writer_mode": {
+    "candidate_generation": "multi_sentence_multi_chunk",
+    "max_chunks_scanned": 14,
+    "max_sentences_per_chunk": 3,
+    "max_candidate_pool": 42,
+    "max_claims": 6
+  },
+  "validation_scoring": {
+    "faithfulness_mode": "evidence_support_x_topic_alignment",
+    "topic_alignment_mode": "idf_weighted_keyword_overlap",
+    "evidence_support_components": {
+      "jaccard_weight": 0.4,
+      "claim_coverage_weight": 0.6,
+      "max_span_sentences": 2
+    },
+    "topic_alignment": {
+      "idf_formula": "log((1 + N)/(1 + df)) + 1",
+      "token_min_length": 4,
+      "weights": {
+        "claim_precision": 0.7,
+        "topic_recall": 0.3
+      },
+      "support_threshold": 0.08,
+      "topic_relevance_threshold": 0.05
+    }
+  },
+  "command": "PYTHONPATH=. MTG_LLM_PROVIDER=rule ./.venv/bin/python run_research_eval.py --dataset eval/topics.jsonl --cards data/commander_cards.csv --decks current_commander_decks --disable-semantic",
+  "metrics": {
+    "mean_groundedness": 1.0,
+    "mean_faithfulness": 0.2469,
+    "mean_topic_relevance": 0.2469,
+    "mean_citation_precision": 1.0
+  },
+  "failure_breakdown": {
+    "ok": 24
+  },
+  "release_gate": {
+    "thresholds": {
+      "groundedness_min": 0.65,
+      "faithfulness_min": 0.2,
+      "topic_relevance_min": 0.08,
+      "citation_precision_min": 0.7
+    },
+    "pass_groundedness": true,
+    "pass_faithfulness": true,
+    "pass_topic_relevance": true,
+    "pass_citation_precision": true,
+    "gate_pass": true
+  }
+}

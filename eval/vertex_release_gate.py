@@ -11,6 +11,7 @@ from typing import Dict, List
 class GateThresholds:
     groundedness_min: float = 0.65
     faithfulness_min: float = 0.20
+    topic_relevance_min: float = 0.08
     citation_precision_min: float = 0.70
 
 
@@ -33,19 +34,23 @@ def evaluate_gate(rows: List[Dict], thresholds: GateThresholds) -> Dict[str, flo
 
     groundedness = [float(row["metrics"]["groundedness"]) for row in rows]
     faithfulness = [float(row["metrics"]["faithfulness"]) for row in rows]
+    topic_relevance = [float(row["metrics"].get("topic_relevance", 0.0)) for row in rows]
     citation_precision = [float(row["metrics"]["citation_precision"]) for row in rows]
 
     agg = {
         "mean_groundedness": round(mean(groundedness), 4),
         "mean_faithfulness": round(mean(faithfulness), 4),
+        "mean_topic_relevance": round(mean(topic_relevance), 4),
         "mean_citation_precision": round(mean(citation_precision), 4),
     }
     agg["pass_groundedness"] = agg["mean_groundedness"] >= thresholds.groundedness_min
     agg["pass_faithfulness"] = agg["mean_faithfulness"] >= thresholds.faithfulness_min
+    agg["pass_topic_relevance"] = agg["mean_topic_relevance"] >= thresholds.topic_relevance_min
     agg["pass_citation_precision"] = agg["mean_citation_precision"] >= thresholds.citation_precision_min
     agg["gate_pass"] = bool(
         agg["pass_groundedness"]
         and agg["pass_faithfulness"]
+        and agg["pass_topic_relevance"]
         and agg["pass_citation_precision"]
     )
     return agg
@@ -56,6 +61,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--results", required=True, help="Path to eval results.jsonl")
     parser.add_argument("--groundedness-min", type=float, default=0.65)
     parser.add_argument("--faithfulness-min", type=float, default=0.20)
+    parser.add_argument("--topic-relevance-min", type=float, default=0.08)
     parser.add_argument("--citation-precision-min", type=float, default=0.70)
     return parser.parse_args()
 
@@ -68,6 +74,7 @@ def main() -> None:
         GateThresholds(
             groundedness_min=float(args.groundedness_min),
             faithfulness_min=float(args.faithfulness_min),
+            topic_relevance_min=float(args.topic_relevance_min),
             citation_precision_min=float(args.citation_precision_min),
         ),
     )

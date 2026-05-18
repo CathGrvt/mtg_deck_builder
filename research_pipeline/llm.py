@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Sequence
 
@@ -10,7 +11,15 @@ from mtg_shared.runtime_env import runtime_env_default
 from mtg_shared.secrets import resolve_openai_api_key
 from mtg_shared.text import extract_json_object, keyword_tokens
 
+from research_pipeline.grounding import build_token_idf, topic_alignment
 from research_pipeline.models import Citation, Claim, RetrievedChunk, StructuredReport
+
+RULE_MIN_TOPIC_SCORE = 0.05
+RULE_MAX_CHUNKS_SCANNED = 14
+RULE_MAX_SENTENCES_PER_CHUNK = 3
+RULE_MAX_CANDIDATE_POOL = 42
+RULE_MAX_CLAIMS = 6
+RULE_MAX_CLAIMS_PER_CHUNK = 2
 
 
 def _extract_json_object(text: str) -> Dict[str, Any]:
@@ -44,6 +53,81 @@ def _keyword_tokens(text: str) -> List[str]:
             "deck",
         },
     )
+
+
+def _candidate_sentences(text: str) -> List[str]:
+    parts = [
+        segment.strip()
+        for segment in re.split(r"(?<=[.!?])\s+|\n+", str(text or "").strip())
+        if segment and segment.strip()
+    ]
+    if parts:
+        return parts
+    fallback = str(text or "").strip()
+    return [fallback] if fallback else []
+
+
+def _normalize_claim_sentence(sentence: str) -> str:
+    cleaned = " ".join(str(sentence or "").split()).strip()
+    if len(cleaned) > 320:
+        cleaned = cleaned[:320].rstrip()
+    return cleaned
+
+
+def _choose_claim_sentences(
+    chunk_text: str,
+    topic: str,
+    max_candidates: int = RULE_MAX_SENTENCES_PER_CHUNK,
+) -> List[str]:
+    sentences = _candidate_sentences(chunk_text)
+    if not sentences:
+        return []
+
+    topic_tokens = set(_keyword_tokens(topic))
+
+    def _score(sentence: str) -> tuple[int, int, int]:
+        sentence_tokens = _keyword_tokens(sentence)
+        overlap = len(set(sentence_tokens) & topic_tokens)
+        token_count = len(sentence_tokens)
+        # Prefer informative but concise evidence spans.
+        length_score = -abs(token_count - 22)
+        return overlap, length_score, token_count
+
+    ranked = sentences
+    if topic_tokens:
+        ranked = sorted(sentences, key=_score, reverse=True)
+
+    chosen: List[str] = []
+    seen = set()
+    for sentence in ranked:
+        cleaned = _normalize_claim_sentence(sentence)
+        if not cleaned:
+            continue
+        if topic_tokens:
+            sentence_tokens = set(_keyword_tokens(cleaned))
+            if not (sentence_tokens & topic_tokens):
+                continue
+        if len(cleaned) < 20:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        chosen.append(cleaned)
+        if len(chosen) >= max(1, int(max_candidates)):
+            break
+
+    if chosen:
+        return chosen
+    if topic_tokens:
+        return []
+    fallback = _normalize_claim_sentence(ranked[0])
+    return [fallback] if fallback else []
+
+
+def _choose_claim_sentence(chunk_text: str, topic: str) -> str:
+    chosen = _choose_claim_sentences(chunk_text=chunk_text, topic=topic, max_candidates=1)
+    return chosen[0] if chosen else ""
 
 
 def _has_vertex_sdk() -> bool:
@@ -189,29 +273,70 @@ class RuleBasedLLM(AgentLLM):
 
         sorted_chunks = sorted(retrieved_chunks, key=lambda item: item.score, reverse=True)
         claims: List[Claim] = []
+        topic_idf = build_token_idf(
+            [topic] + [chunk.text for chunk in sorted_chunks[:20]],
+            min_token_length=4,
+        )
+        candidate_pool: List[tuple[float, float, int, str, RetrievedChunk]] = []
 
-        for chunk in sorted_chunks[:6]:
-            sentence = chunk.text.strip().split(". ")[0].strip()
-            if not sentence:
-                continue
-            if len(sentence) > 220:
-                sentence = sentence[:220].rstrip() + "..."
-            confidence = max(0.2, min(1.0, 0.3 + chunk.score))
-            claims.append(
-                Claim(
-                    claim=sentence,
-                    citations=[Citation(doc_id=chunk.doc_id, chunk_id=chunk.chunk_id)],
-                    confidence=round(confidence, 3),
+        for chunk in sorted_chunks[:RULE_MAX_CHUNKS_SCANNED]:
+            for sentence in _choose_claim_sentences(
+                chunk.text,
+                topic=topic,
+                max_candidates=RULE_MAX_SENTENCES_PER_CHUNK,
+            ):
+                topic_score, _ = topic_alignment(sentence, topic, token_idf=topic_idf)
+                if topic_score < RULE_MIN_TOPIC_SCORE:
+                    continue
+                sentence_tokens = _keyword_tokens(sentence)
+                length_score = -abs(len(sentence_tokens) - 22)
+                candidate_pool.append(
+                    (
+                        float(topic_score),
+                        float(chunk.score),
+                        int(length_score),
+                        sentence,
+                        chunk,
+                    )
                 )
-            )
+                if len(candidate_pool) >= RULE_MAX_CANDIDATE_POOL:
+                    break
+            if len(candidate_pool) >= RULE_MAX_CANDIDATE_POOL:
+                break
+
+        if candidate_pool:
+            candidate_pool.sort(key=lambda row: (row[0], row[1], row[2]), reverse=True)
+            seen_claims = set()
+            claims_per_chunk: Dict[tuple[str, str], int] = {}
+            for topic_score, chunk_score, _length_score, sentence, chunk in candidate_pool:
+                claim_key = sentence.lower().strip()
+                if not claim_key or claim_key in seen_claims:
+                    continue
+                chunk_key = (chunk.doc_id, chunk.chunk_id)
+                if claims_per_chunk.get(chunk_key, 0) >= RULE_MAX_CLAIMS_PER_CHUNK:
+                    continue
+                confidence = max(0.2, min(1.0, 0.2 + (0.55 * chunk_score) + (0.25 * topic_score)))
+                claims.append(
+                    Claim(
+                        claim=sentence,
+                        citations=[Citation(doc_id=chunk.doc_id, chunk_id=chunk.chunk_id)],
+                        confidence=round(confidence, 3),
+                    )
+                )
+                seen_claims.add(claim_key)
+                claims_per_chunk[chunk_key] = claims_per_chunk.get(chunk_key, 0) + 1
+                if len(claims) >= RULE_MAX_CLAIMS:
+                    break
 
         if not claims:
-            claims.append(
-                Claim(
-                    claim="Retrieved evidence exists but could not be converted to claims.",
-                    citations=[Citation(doc_id=sorted_chunks[0].doc_id, chunk_id=sorted_chunks[0].chunk_id)],
-                    confidence=0.3,
-                )
+            return StructuredReport(
+                topic=topic,
+                summary=(
+                    f"Research on '{topic}' retrieved context, but no topical evidence claims "
+                    "met validation requirements."
+                ),
+                claims=[],
+                open_questions=list(gaps) or ["Refine retrieval focus and rerun synthesis."],
             )
 
         top_titles = []
@@ -407,6 +532,9 @@ class OpenAIChatLLM(AgentLLM):
             "instructions": [
                 "Every claim must include at least one citation from the provided chunk ids.",
                 "Do not invent citations or sources.",
+                "Keep claims near-extractive and lexically close to cited context text.",
+                "Only include claims that directly answer the topic; skip off-topic context chunks.",
+                "Prefer one-sentence claims with minimal paraphrase.",
                 "Return strict JSON only.",
             ],
         }

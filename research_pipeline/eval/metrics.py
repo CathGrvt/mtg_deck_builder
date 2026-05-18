@@ -28,6 +28,7 @@ def classify_failure(metrics: Dict[str, Any]) -> Tuple[str, str]:
     claim_count = int(metrics.get("claim_count", 0))
     groundedness = float(metrics.get("groundedness", 0.0))
     faithfulness = float(metrics.get("faithfulness", 0.0))
+    topic_relevance = float(metrics.get("topic_relevance", 0.0))
     citation_precision = float(metrics.get("citation_precision", 0.0))
     total_citations = int(metrics.get("total_citations", 0))
 
@@ -37,8 +38,10 @@ def classify_failure(metrics: Dict[str, Any]) -> Tuple[str, str]:
         return "bad_citation", "Claims are uncited."
     if citation_precision < 0.6:
         return "bad_citation", "Many citations do not match retrieved context."
+    if topic_relevance < 0.08:
+        return "off_topic_claim", "Claims are weakly aligned with the topic."
     if groundedness < 0.5:
         return "retrieval_miss", "Claims are weakly supported by retrieved chunks."
-    if faithfulness < 0.1:
+    if faithfulness < 0.08:
         return "hallucinated_claim", "Claim wording has low overlap with cited evidence."
     return "ok", "No major failure category triggered."
