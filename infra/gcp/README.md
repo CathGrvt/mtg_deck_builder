@@ -53,3 +53,21 @@ The workflow also supports a secrets-only setup path (vars optional) after Terra
 
 - `sgp_policy_example.sh` for semantic governance policy creation
 - `agent_gateway_policy_test.sh` for dry-run ingress/egress checks
+
+### Dry-Run Policy Check Script
+
+`agent_gateway_policy_test.sh` runs log-based pass/fail checks over a recent time window.
+
+Example:
+
+```bash
+PROJECT_ID="my-project" \
+WINDOW_MINUTES=60 \
+INGRESS_ALLOW_FILTER='resource.type="http_load_balancer" AND jsonPayload.policyAction="ALLOW" AND textPayload:"dry-run"' \
+INGRESS_DENY_FILTER='resource.type="http_load_balancer" AND jsonPayload.policyAction="DENY" AND textPayload:"dry-run"' \
+EGRESS_ALLOW_FILTER='resource.type="aiplatform.googleapis.com/Agent" AND jsonPayload.policyAction="ALLOW" AND textPayload:"dry-run"' \
+EGRESS_DENY_FILTER='resource.type="aiplatform.googleapis.com/Agent" AND jsonPayload.policyAction="DENY" AND textPayload:"dry-run"' \
+./infra/gcp/agent_gateway_policy_test.sh
+```
+
+Tune filters and thresholds (`MIN_*`, `MAX_*`) to your environment before promotion to `ENFORCE`.

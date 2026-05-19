@@ -1375,7 +1375,7 @@ The JSONL rows are serialized `DocumentChunk` objects.
 
 - `README.md`: rollout sequence and IAM guidance.
 - `sgp_policy_example.sh`: example semantic governance policy creation.
-- `agent_gateway_policy_test.sh`: placeholder dry-run checks for Agent Gateway policies.
+- `agent_gateway_policy_test.sh`: log-based dry-run checks for Agent Gateway ingress/egress policy behavior.
 
 ---
 
@@ -1866,7 +1866,7 @@ This appendix is a quick reference for explaining what each important file does.
 |---|---|
 | `infra/gcp/README.md` | IAM, rollout, CI/CD, and policy rollout notes. |
 | `infra/gcp/sgp_policy_example.sh` | Example semantic governance policy creation script. |
-| `infra/gcp/agent_gateway_policy_test.sh` | Placeholder Agent Gateway dry-run policy validation script. |
+| `infra/gcp/agent_gateway_policy_test.sh` | Agent Gateway dry-run policy validation script (log-based checks). |
 
 ### 27.8 Tests
 
